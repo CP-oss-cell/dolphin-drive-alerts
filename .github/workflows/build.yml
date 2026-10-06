@@ -1,4 +1,4 @@
-name: Build Dolphin Drive Alerts FINAL 0.7 FIX 2
+name: Build Dolphin Drive Alerts FINAL 0.8 SAFE START
 
 on:
   workflow_dispatch:
@@ -14,11 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unpack FINAL source ZIP
+      - name: Unpack FINAL 0.8 source ZIP
         run: |
           rm -rf _src
           mkdir _src
-          unzip -q DolphinDriveAlerts_FINAL_v0.7_BUILD_FIX_source.zip -d _src
+          unzip -q DolphinDriveAlerts_FINAL_v0.8_SAFE_START_source.zip -d _src
           test -f _src/DolphinDriveAlertsCore/gradlew
 
       - name: Set up Python
@@ -57,18 +57,14 @@ jobs:
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
           echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
           echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-
           SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
           if [ ! -x "$SDKMANAGER" ]; then
             SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -name sdkmanager | sort | tail -n 1)"
           fi
-
           test -n "$SDKMANAGER"
           test -x "$SDKMANAGER"
-
-          echo "Using sdkmanager: $SDKMANAGER"
           yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER"             "platform-tools"             "platforms;android-34"             "build-tools;34.0.0"
+          "$SDKMANAGER" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
       - name: Build APK
         working-directory: _src/DolphinDriveAlertsCore
@@ -76,20 +72,20 @@ jobs:
           chmod +x gradlew
           ./gradlew --no-daemon clean :app:assembleDebug
 
-      - name: Package APK and generated source
+      - name: Package APK and source
         working-directory: _src/DolphinDriveAlertsCore
         run: |
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/DolphinDriveAlerts-v0.7-FINAL-realcar.apk
-          sha256sum dist/DolphinDriveAlerts-v0.7-FINAL-realcar.apk > dist/DolphinDriveAlerts-v0.7-FINAL-realcar.apk.sha256
+          cp app/build/outputs/apk/debug/app-debug.apk dist/DolphinDriveAlerts-v0.8-SAFE-START-realcar.apk
+          sha256sum dist/DolphinDriveAlerts-v0.8-SAFE-START-realcar.apk > dist/DolphinDriveAlerts-v0.8-SAFE-START-realcar.apk.sha256
           cp app/src/main/assets/voice/voice_pack_manifest.generated.json dist/
-          zip -qr dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip .             -x '.git/*' 'dist/*' '.gradle/*' 'app/build/*' 'build/*' 'tools/__pycache__/*'
-          sha256sum dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip > dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip.sha256
+          zip -qr dist/DolphinDriveAlerts-v0.8-SAFE-START-generated-source.zip .             -x '.git/*' 'dist/*' '.gradle/*' 'app/build/*' 'build/*' 'tools/__pycache__/*'
+          sha256sum dist/DolphinDriveAlerts-v0.8-SAFE-START-generated-source.zip > dist/DolphinDriveAlerts-v0.8-SAFE-START-generated-source.zip.sha256
 
       - name: Upload build outputs
         uses: actions/upload-artifact@v4
         with:
-          name: DolphinDriveAlerts-v0.7-FINAL-realcar
+          name: DolphinDriveAlerts-v0.8-SAFE-START-realcar
           path: _src/DolphinDriveAlertsCore/dist/*
           if-no-files-found: error
           retention-days: 30
