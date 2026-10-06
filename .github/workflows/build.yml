@@ -1,4 +1,4 @@
-name: Build Dolphin Drive Alerts FINAL 0.7
+name: Build Dolphin Drive Alerts FINAL 0.7 FIXED
 
 on:
   workflow_dispatch:
@@ -10,6 +10,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+
     steps:
       - uses: actions/checkout@v4
 
@@ -17,7 +18,7 @@ jobs:
         run: |
           rm -rf _src
           mkdir _src
-          unzip -q DolphinDriveAlerts_FINAL_v0.7_source.zip -d _src
+          unzip -q DolphinDriveAlerts_FINAL_v0.7_BUILD_FIX_source.zip -d _src
           test -f _src/DolphinDriveAlertsCore/gradlew
 
       - name: Set up Python
@@ -70,8 +71,7 @@ jobs:
           cp app/build/outputs/apk/debug/app-debug.apk dist/DolphinDriveAlerts-v0.7-FINAL-realcar.apk
           sha256sum dist/DolphinDriveAlerts-v0.7-FINAL-realcar.apk > dist/DolphinDriveAlerts-v0.7-FINAL-realcar.apk.sha256
           cp app/src/main/assets/voice/voice_pack_manifest.generated.json dist/
-          zip -qr dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip . \
-            -x '.git/*' 'dist/*' '.gradle/*' 'app/build/*' 'build/*' 'tools/__pycache__/*'
+          zip -qr dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip .             -x '.git/*' 'dist/*' '.gradle/*' 'app/build/*' 'build/*' 'tools/__pycache__/*'
           sha256sum dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip > dist/DolphinDriveAlerts-v0.7-FINAL-generated-source.zip.sha256
 
       - name: Upload build outputs
