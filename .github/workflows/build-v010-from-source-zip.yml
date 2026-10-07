@@ -94,3 +94,94 @@ jobs:
       # but the obsolete `tools` package is no longer available and the job exits 1.
       - name: Resolve preinstalled Android SDK
         shell: bash
+        run: |
+          set -euo pipefail
+
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            find "$SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+
+          echo "Android SDK root: $SDK_ROOT"
+          echo "sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --version
+
+      - name: Accept Android SDK licenses and install API 34
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # `yes` can receive SIGPIPE after sdkmanager finishes, so license acceptance
+          # is intentionally non-fatal while the actual package installation is strict.
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+
+          "$SDKMANAGER" --install \
+            'platform-tools' \
+            'platforms;android-34' \
+            'build-tools;34.0.0'
+
+          test -f "$ANDROID_SDK_ROOT/platforms/android-34/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2"
+          echo "Android API 34 / Build Tools 34.0.0 ready"
+
+      - name: Build installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace --warning-mode all clean :app:assembleDebug | tee "$GITHUB_WORKSPACE/gradle-build.log"
+
+      - name: Package APK and verification files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+
+          cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk"
+          sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk" \
+            > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk.sha256"
+
+          cp "$PROJECT_ROOT/VALIDATION_RESULTS_0.10.txt" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/BUILD_AND_VALIDATION_STATUS_KO.txt" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/EVIDENCE_REGISTRY_V010.md" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/app/src/main/assets/voice/voice_pack_manifest.generated.json" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$GITHUB_WORKSPACE/gradle-build.log" "$GITHUB_WORKSPACE/dist/" || true
+
+          echo '--- dist ---'
+          ls -lah "$GITHUB_WORKSPACE/dist"
+          echo '--- APK SHA256 ---'
+          cat "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk.sha256"
+
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinDriveAlerts-v0.10-build-failure-log
+          path: |
+            gradle-build.log
+            _build_src/**/VALIDATION_RESULTS_0.10.txt
+            _build_src/**/BUILD_AND_VALIDATION_STATUS_KO.txt
+          if-no-files-found: ignore
+          retention-days: 14
