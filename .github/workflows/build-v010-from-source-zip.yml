@@ -17,7 +17,7 @@ env:
 
 jobs:
   build-apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
 
     steps:
@@ -89,50 +89,8 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK 34
+      # IMPORTANT: Do NOT use android-actions/setup-android@v3 here.
+      # On the current GitHub Ubuntu runner it invokes `sdkmanager tools`,
+      # but the obsolete `tools` package is no longer available and the job exits 1.
+      - name: Resolve preinstalled Android SDK
         shell: bash
-        run: |
-          set -euo pipefail
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-34' 'build-tools;34.0.0' 'platform-tools'
-
-      - name: Build installable debug APK
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "$PROJECT_ROOT"
-          chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace clean :app:assembleDebug
-
-      - name: Package APK and verification files
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$GITHUB_WORKSPACE/dist"
-          APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
-          test -f "$APK"
-
-          cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk"
-          sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk" \
-            > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk.sha256"
-
-          cp "$PROJECT_ROOT/VALIDATION_RESULTS_0.10.txt" "$GITHUB_WORKSPACE/dist/" || true
-          cp "$PROJECT_ROOT/BUILD_AND_VALIDATION_STATUS_KO.txt" "$GITHUB_WORKSPACE/dist/" || true
-          cp "$PROJECT_ROOT/EVIDENCE_REGISTRY_V010.md" "$GITHUB_WORKSPACE/dist/" || true
-          cp "$PROJECT_ROOT/app/src/main/assets/voice/voice_pack_manifest.generated.json" "$GITHUB_WORKSPACE/dist/" || true
-
-          echo '--- dist ---'
-          ls -lah "$GITHUB_WORKSPACE/dist"
-          echo '--- APK SHA256 ---'
-          cat "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE.apk.sha256"
-
-      - name: Upload installable APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: DolphinDriveAlerts-v0.10-DIAGNOSTIC-CAPTURE
-          path: dist/*
-          if-no-files-found: error
-          retention-days: 30
