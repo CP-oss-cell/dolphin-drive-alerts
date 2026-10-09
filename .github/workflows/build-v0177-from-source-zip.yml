@@ -49,6 +49,24 @@ jobs:
           echo "Project root: $PROJECT_ROOT"
           ls -la "$PROJECT_ROOT"
 
+      - name: Preflight APK distribution files (before expensive build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            INTEGRATION_V0173_EQ_SOUND_FOCUS_KO.md \
+            INTEGRATION_V0175_CAPTURE_RECONNECT_KO.md \
+            INTEGRATION_V0177_EQ_SDK_API_FIX_KO.md \
+            AVAS_LOG_ANALYSIS_20261009.json \
+            STATIC_GATES_V0177.log \
+            BUILD_UPLOAD_V0177_KO.md; do
+            if [ ! -f "$PROJECT_ROOT/$name" ]; then
+              echo "::error file=$name::Required APK distribution file missing in source ZIP"
+              exit 1
+            fi
+          done
+          echo "Required APK distribution documents: all present"
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -158,7 +176,7 @@ jobs:
           sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.7-EQ-SDK-API-FIX.apk" > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.7-EQ-SDK-API-FIX.apk.sha256"
           cp "$PROJECT_ROOT/INTEGRATION_V0173_EQ_SOUND_FOCUS_KO.md" "$GITHUB_WORKSPACE/dist/"
           cp "$PROJECT_ROOT/INTEGRATION_V0175_CAPTURE_RECONNECT_KO.md" "$GITHUB_WORKSPACE/dist/"
-          cp "$PROJECT_ROOT/INTEGRATION_V0177_COMPILER_FIX_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0177_EQ_SDK_API_FIX_KO.md" "$GITHUB_WORKSPACE/dist/"
           cp "$PROJECT_ROOT/AVAS_LOG_ANALYSIS_20261009.json" "$GITHUB_WORKSPACE/dist/"
           cp "$PROJECT_ROOT/STATIC_GATES_V0177.log" "$GITHUB_WORKSPACE/dist/"
           cp "$PROJECT_ROOT/BUILD_UPLOAD_V0177_KO.md" "$GITHUB_WORKSPACE/dist/"
