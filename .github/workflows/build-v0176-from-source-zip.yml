@@ -1,0 +1,184 @@
+name: Build Dolphin Drive Alerts v0.17.6 Kotlin Compile Fix APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'DolphinDriveAlerts-v0.17.6-COMPILER-FIX-source.zip'
+      - '.github/workflows/build-v0176-from-source-zip.yml'
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ZIP: DolphinDriveAlerts-v0.17.6-COMPILER-FIX-source.zip
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          echo "Using source: $SOURCE_ZIP"
+          sha256sum "$SOURCE_ZIP"
+
+      - name: Extract v0.17.6 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf _build_src
+          mkdir -p _build_src
+          unzip -q "$SOURCE_ZIP" -d _build_src
+          PROJECT_ROOT="$(find "$GITHUB_WORKSPACE/_build_src" -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_ROOT" ]; then
+            echo 'ERROR: settings.gradle.kts not found after extracting source ZIP'
+            find _build_src -maxdepth 4 -type f | sort | head -200
+            exit 1
+          fi
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+          ls -la "$PROJECT_ROOT"
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install voice-generation dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade pip
+          python -m pip install edge-tts==7.2.8
+
+      - name: Generate and verify 60 Korean voice assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          python tools/generate_voice_pack.py --force
+          python tools/verify_voice_pack.py
+          COUNT="$(find app/src/main/assets/voice -type f -name '*.wav' | wc -l | tr -d ' ')"
+          echo "voice wav count=$COUNT"
+          test "$COUNT" = '60'
+
+      - name: Verify v0.17.6 capture resume, AVAS analysis, EQ and vehicle regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          python tools/verify_v0176_prior_regressions.py
+          python tools/verify_v0176_eq_improvements.py
+          python tools/verify_v0176_eq_regressions.py
+          python tools/verify_v0176_avas_tracker.py
+          python tools/verify_v0176_capture_resume.py
+          python tools/verify_v0176_android_api_contract.py
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Verify actual EQ Kotlin source against Android API contract stubs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          if command -v kotlinc >/dev/null 2>&1; then
+            python tools/verify_v0176_eq_kotlin_compile.py
+          else
+            echo 'kotlinc unavailable: Gradle :app:compileDebugKotlin will verify full Android API on this runner'
+          fi
+
+      - name: Resolve preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            find "$SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
+
+      - name: Accept Android SDK licenses and install API 34
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
+          test -f "$ANDROID_SDK_ROOT/platforms/android-34/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2"
+          echo "Android API 34 / Build Tools 34.0.0 ready"
+
+      - name: Build installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace --warning-mode all clean :app:assembleDebug | tee "$GITHUB_WORKSPACE/gradle-build.log"
+
+      - name: Package APK and verification files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.6-COMPILER-FIX.apk"
+          sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.6-COMPILER-FIX.apk" > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.6-COMPILER-FIX.apk.sha256"
+          cp "$PROJECT_ROOT/INTEGRATION_V0173_EQ_SOUND_FOCUS_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0175_CAPTURE_RECONNECT_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0176_COMPILER_FIX_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/AVAS_LOG_ANALYSIS_20261009.json" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V0176.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V0176_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/AUTOSTART_STATUS_KO.md" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/BUILD_AND_VALIDATION_STATUS_KO.txt" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/app/src/main/assets/voice/voice_pack_manifest.generated.json" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$GITHUB_WORKSPACE/gradle-build.log" "$GITHUB_WORKSPACE/dist/" || true
+          echo '--- dist ---'
+          ls -lah "$GITHUB_WORKSPACE/dist"
+          echo '--- APK SHA256 ---'
+          cat "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.6-COMPILER-FIX.apk.sha256"
+
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinDriveAlerts-v0.17.6-COMPILER-FIX
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinDriveAlerts-v0.17.6-build-failure-log
+          path: |
+            gradle-build.log
+            _build_src/**/BUILD_AND_VALIDATION_STATUS_KO.txt
+          if-no-files-found: ignore
+          retention-days: 14
