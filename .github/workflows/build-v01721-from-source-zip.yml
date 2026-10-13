@@ -141,7 +141,7 @@ jobs:
           python3 -m py_compile tools/verify_v01718_reference_recovery.py
           python3 tools/verify_v01719_launcher_reference.py
           python3 tools/verify_v01720_nav_audio_lab.py
-          python3 tools/verify_v01721_voice_build_recovery.py
+          python3 -m py_compile tools/verify_v01721_voice_build_recovery.py
 
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -164,6 +164,15 @@ jobs:
           sudo apt-get install -y ffmpeg
           python -m pip install --upgrade pip
           python -m pip install edge-tts==7.2.8 gTTS==2.5.4
+
+      - name: Validate voice fallback with FFmpeg installed (offline, before network TTS)
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v ffmpeg
+          ffmpeg -version | sed -n '1,2p'
+          cd "$PROJECT_ROOT"
+          python tools/verify_v01721_voice_build_recovery.py
 
       - name: Generate or reuse and verify 60 Korean voice assets
         id: voice_gen
