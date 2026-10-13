@@ -1,4 +1,4 @@
-name: BYD Dolphin Good Lock Guided Probe v0.2
+name: BYD Dolphin Good Lock Guided Probe v0.2 (Icon Fix)
 on:
   workflow_dispatch:
 permissions:
@@ -16,22 +16,37 @@ jobs:
           distribution: temurin
           java-version: '17'
       - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Install API 34
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Verify preinstalled SDK and install API 34 if missing
+        shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+          set -euo pipefail
+          : "${ANDROID_HOME:?Android SDK unavailable}"
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          command -v sdkmanager
+          sdkmanager --version
+          if [[ ! -f "$ANDROID_HOME/platforms/android-34/android.jar" || ! -f "$ANDROID_HOME/build-tools/34.0.0/aapt" ]]; then
+            yes | sdkmanager --licenses >/dev/null || true
+            sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+          fi
+          test -s "$ANDROID_HOME/platforms/android-34/android.jar"
+          test -x "$ANDROID_HOME/build-tools/34.0.0/aapt"
+          echo 'API34 and build tools verified' 
       - name: Setup Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
       - name: Unpack standalone guided probe
         run: |
-          test -s DolphinGoodLockProbe-v0.2.0-source.zip
+          test -s DolphinGoodLockProbe-v0.2.0-ICON-FIX-source.zip
           mkdir -p guided-src
-          unzip -oq DolphinGoodLockProbe-v0.2.0-source.zip -d guided-src
+          unzip -oq DolphinGoodLockProbe-v0.2.0-ICON-FIX-source.zip -d guided-src
           test -f guided-src/tools/verify_source.py
           python3 guided-src/tools/verify_source.py guided-src
+          grep -Fq 'android:icon="@drawable/probe_icon"' guided-src/app/src/main/AndroidManifest.xml
+          test -s guided-src/app/src/main/res/drawable-nodpi/probe_icon.png
       - name: Android Gradle assembleDebug
         run: |
           cd guided-src
@@ -41,7 +56,7 @@ jobs:
           set -euo pipefail
           APK=guided-src/app/build/outputs/apk/debug/app-debug.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee apk-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" 2>&1 | tee apk-badging.txt
           grep -q "package: name='com.dolphin.goodlock.probe'" apk-badging.txt
           "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee apk-permissions.txt
           if grep -q 'uses-permission' apk-permissions.txt; then
