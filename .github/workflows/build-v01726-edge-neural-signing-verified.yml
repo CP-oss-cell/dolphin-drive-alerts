@@ -1,0 +1,512 @@
+name: Build Dolphin Drive Alerts v0.17.26 Edge Neural APK (explicit signing and certificate verification)
+
+on:
+  workflow_dispatch:
+    inputs:
+      refresh_voice_assets:
+        description: "Force regenerate 60 Edge Neural WAVs (default: reuse VERIFIED Edge cache, generate if missing)"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+env:
+  SOURCE_ZIP: DolphinDriveAlerts-v0.17.26-EDGE-NEURAL-VOICE-RESTORE-source.zip
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify source ZIP
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$SOURCE_ZIP"
+          echo "Using source: $SOURCE_ZIP"
+          sha256sum "$SOURCE_ZIP"
+
+      - name: Extract v0.17.26 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf _build_src
+          mkdir -p _build_src
+          unzip -q "$SOURCE_ZIP" -d _build_src
+          PROJECT_ROOT="$(find "$GITHUB_WORKSPACE/_build_src" -type f -name settings.gradle.kts -printf '%h\n' | head -n 1)"
+          if [ -z "$PROJECT_ROOT" ]; then
+            echo 'ERROR: settings.gradle.kts not found after extracting source ZIP'
+            find _build_src -maxdepth 4 -type f | sort | head -200
+            exit 1
+          fi
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+          echo "Project root: $PROJECT_ROOT"
+          ls -la "$PROJECT_ROOT"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Sign fresh install (prefer persisted key; allow initial build without old key)
+        shell: bash
+        env:
+          DEBUG_KEYSTORE_B64: ${{ secrets.DOLPHIN_DEBUG_KEYSTORE_B64 }}
+          INSTALLED_CERT_SHA256: ${{ vars.DOLPHIN_INSTALLED_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.android"
+          if [ -n "${DEBUG_KEYSTORE_B64:-}" ]; then
+            printf '%s' "$DEBUG_KEYSTORE_B64" | base64 --decode > "$HOME/.android/debug.keystore"
+            chmod 600 "$HOME/.android/debug.keystore"
+            echo 'Using persistent signing key from repository secret.'
+            SIGNING_MODE=PERSISTENT_KEY
+          else
+            if [ -n "${INSTALLED_CERT_SHA256:-}" ]; then
+              echo '::error::Certificate variable is set but signing-key secret is missing. Clear stale variable or supply corresponding secret.'
+              exit 1
+            fi
+            echo '::warning::No signing secret: generating a FRESH debug key. This APK installs after uninstall, but FUTURE in-place updates require this same key, which the runner does not retain.'
+            keytool -genkeypair -noprompt -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey -keypass android -dname 'CN=Fresh Install Debug,O=Dolphin Drive Alerts,C=KR' -keyalg RSA -keysize 2048 -validity 10000 >/dev/null 2>&1
+            chmod 600 "$HOME/.android/debug.keystore"
+            SIGNING_MODE=ONE_TIME_EPHEMERAL
+          fi
+          if ! keytool -list -keystore "$HOME/.android/debug.keystore" -storepass android -alias androiddebugkey >/dev/null 2>&1; then
+            echo '::error::Signing keystore must use alias androiddebugkey and password android for assembleDebug.'
+            exit 1
+          fi
+          ACTUAL_CERT_SHA256=$(keytool -exportcert -rfc -alias androiddebugkey -keystore "$HOME/.android/debug.keystore" -storepass android 2>/dev/null | openssl x509 -noout -fingerprint -sha256 | sed -E 's/^.*=//' | tr -d ':' | tr '[:lower:]' '[:upper:]')
+          if [ -n "${INSTALLED_CERT_SHA256:-}" ]; then
+            EXPECTED_CERT_SHA256=$(printf '%s' "$INSTALLED_CERT_SHA256" | tr -d '[:space:]:' | tr '[:lower:]' '[:upper:]')
+            if ! [[ "$EXPECTED_CERT_SHA256" =~ ^[0-9A-F]{64}$ ]] || [ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+              echo '::error::Signing secret and expected certificate SHA-256 do not match.'
+              exit 1
+            fi
+          fi
+          echo "DOLPHIN_SIGNING_KEYSTORE_PATH=$HOME/.android/debug.keystore" >> "$GITHUB_ENV"
+          echo "DOLPHIN_CERT_SHA256=$ACTUAL_CERT_SHA256" >> "$GITHUB_ENV"
+          echo "DOLPHIN_SIGNING_MODE=$SIGNING_MODE" >> "$GITHUB_ENV"
+          echo "### APK signing: $SIGNING_MODE" >> "$GITHUB_STEP_SUMMARY"
+          echo "Certificate SHA-256: $ACTUAL_CERT_SHA256" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SIGNING_MODE" = ONE_TIME_EPHEMERAL ]; then
+            echo '⚠️ This build will not be updatable by another ephemeral-signature APK. Configure a fixed signing secret BEFORE treating an install as a long-lived baseline.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Preflight APK distribution files (before expensive build)
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            INTEGRATION_V0173_EQ_SOUND_FOCUS_KO.md \
+            INTEGRATION_V0175_CAPTURE_RECONNECT_KO.md \
+            INTEGRATION_V0177_EQ_SDK_API_FIX_KO.md \
+            INTEGRATION_V0178_COMPREHENSIVE_FIX_KO.md \
+            INTEGRATION_V0179_OEM_SIGNAL_RECOVERY_KO.md \
+            AVAS_LOG_ANALYSIS_20261009.json \
+            STATIC_GATES_V0179.log \
+            BUILD_UPLOAD_V0179_KO.md \
+            GITHUB_BUILD_FAILURE_V0179_TO_V01710_KO.md \
+            INTEGRATION_V01710_BRIDGE_RETURN_FIX_KO.md \
+            STATIC_GATES_V01710.log \
+            BUILD_UPLOAD_V01710_KO.md \
+            INTEGRATION_V01711_BSD_GENERIC_KO.md \
+            STATIC_GATES_V01711.log \
+            BUILD_UPLOAD_V01711_KO.md \
+            INTEGRATION_V01712_EQ_GENTLE_TUNE_KO.md \
+            STATIC_GATES_V01712.log \
+            BUILD_UPLOAD_V01712_KO.md \
+            INTEGRATION_V01713_ALL_ISSUES_KO.md \
+            REALCAR_TEST_MATRIX_V01713_KO.md \
+            STATIC_GATES_V01713.log \
+            BUILD_UPLOAD_V01713_KO.md \
+            INTEGRATION_V01714_ADB_FIRST_RUN_KO.md \
+            BUILD_UPLOAD_V01714_KO.md \
+            STATIC_GATES_V01714.log \
+            SOURCE_BASELINE_DIFF_V01714.txt \
+            INTEGRATION_V01715_REALCAR_EVIDENCE_REPAIR_KO.md \
+            REALCAR_TEST_MATRIX_V01715_KO.md \
+            BUILD_UPLOAD_V01715_KO.md \
+            STATIC_GATES_V01715.log \
+            SOURCE_BASELINE_DIFF_V01715.txt \
+            INTEGRATION_V01716_TBT_LOCATION_PERMISSIONS_KO.md \
+            REALCAR_TEST_MATRIX_V01716_KO.md \
+            BUILD_UPLOAD_V01716_KO.md \
+            STATIC_GATES_V01716.log \
+            SOURCE_BASELINE_DIFF_V01716.txt \
+            GITHUB_BUILD_FAILURE_V01716_TO_V01717_KO.md \
+            INTEGRATION_V01717_SPLIT_TASK_CI_FIX_KO.md \
+            BUILD_UPLOAD_V01717_KO.md \
+            STATIC_GATES_V01717.log \
+            SOURCE_BASELINE_DIFF_V01717.txt \
+            INTEGRATION_V01718_REFERENCE_GAPS_KO.md \
+            BUILD_UPLOAD_V01718_KO.md \
+            INTEGRATION_V01719_LAUNCHER_REFERENCE_KO.md \
+            BUILD_UPLOAD_V01719_KO.md \
+            LAUNCHER_V1_EVOLUTION_FORENSIC_20261013_KO.md \
+            SOURCE_BASELINE_DIFF_V01719.txt \
+            INTEGRATION_V01720_NAV_AUDIO_LAB_KO.md \
+            REALCAR_TEST_MATRIX_V01720_KO.md \
+            BUILD_UPLOAD_V01720_KO.md \
+            STATIC_GATES_V01720.log \
+            SOURCE_BASELINE_DIFF_V01720.txt \
+            CI_V01721_EDGE_403_RECOVERY_KO.md \
+            BUILD_UPLOAD_V01721_KO.md \
+            STATIC_GATES_V01721.log \
+            INTEGRATION_V01722_AUDIO_NORMAL_VOICE_KO.md \
+            BUILD_UPLOAD_V01722_KO.md \
+            INTEGRATION_V01723_SPLIT_RATIO_KO.md \
+            REALCAR_TEST_MATRIX_V01723_KO.md \
+            BUILD_UPLOAD_V01723_KO.md \
+            STATIC_GATES_V01723.log \
+            SOURCE_BASELINE_DIFF_V01723.txt \
+            INTEGRATION_V01724_THREE_REFERENCE_FIXES_KO.md \
+            REALCAR_TEST_MATRIX_V01724_KO.md \
+            BUILD_UPLOAD_V01724_KO.md \
+            SOURCE_BASELINE_DIFF_V01724.txt; do
+            if [ ! -f "$PROJECT_ROOT/$name" ]; then
+              echo "::error file=$name::Required APK distribution file missing in source ZIP"
+              exit 1
+            fi
+          done
+          echo "Required APK distribution documents: all present"
+
+      - name: Preflight explicit return in OEM ReferenceBridge (before voice generation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          python3 tools/verify_v01710_reference_bridge_contract.py
+          python3 tools/verify_v01713_integration.py
+          python3 tools/verify_v01714_adb_onboarding.py --static-only
+          python3 tools/verify_v01715_realcar_repair.py --static-only
+          python3 tools/verify_v01716_tbt_location_permissions.py --static-only
+          python3 tools/verify_v01717_split_task_ci.py --static-only
+          python3 -m py_compile tools/verify_v01718_reference_recovery.py
+          python3 tools/verify_v01719_launcher_reference.py
+          python3 tools/verify_v01720_nav_audio_lab.py
+          python3 -m py_compile tools/verify_v01721_voice_build_recovery.py
+          python3 -m py_compile tools/verify_v01724_three_realcar_paths.py
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Preflight fixed Route 5/6/Media and original-voice source guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          python3 tools/verify_v01722_audio_recovery.py
+
+      - name: Restore verified Edge Neural WAV pack (no gTTS or effects-only)
+        uses: actions/cache/restore@v4
+        with:
+          path: _build_src/DolphinDriveAlertsCore/app/src/main/assets/voice
+          key: drivealerts-verified-edge-v026-${{ hashFiles('_build_src/DolphinDriveAlertsCore/tools/voice_prompts.json') }}-${{ github.run_id }}
+          restore-keys: |
+            drivealerts-verified-edge-v026-${{ hashFiles('_build_src/DolphinDriveAlertsCore/tools/voice_prompts.json') }}-
+
+      - name: Restore or regenerate 60 original Edge Korean Neural WAV (male+female REQUIRED)
+        id: voice_gen
+        shell: bash
+        env:
+          FORCE_REFRESH: ${{ inputs.refresh_voice_assets }}
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          mkdir -p app/src/main/assets/voice
+          if [ -f "$GITHUB_WORKSPACE/DolphinDriveAlerts-verified-neural-voices.zip" ]; then
+            unzip -o -q "$GITHUB_WORKSPACE/DolphinDriveAlerts-verified-neural-voices.zip" -d app/src/main/assets/voice
+            echo 'Imported previous Edge voice pack; checking SHA-256 / provider / text before use'
+          fi
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+          python -m pip install --upgrade 'edge-tts==7.3.1'
+          python -m edge_tts --version
+          if [ "${FORCE_REFRESH:-false}" = 'true' ]; then
+            echo 'Requested fresh Edge generation: male 30 + female 30'
+            python tools/generate_voice_pack.py --force 2>&1 | tee "$GITHUB_WORKSPACE/voice-generation.log"
+            echo 'regenerated=true' >> "$GITHUB_OUTPUT"
+          elif python tools/verify_voice_pack.py; then
+            echo 'Verified original Edge Neural cache reused: male 30 + female 30'
+            echo 'regenerated=false' >> "$GITHUB_OUTPUT"
+          else
+            echo 'No fully verified Edge cache: generating from Edge 7.3.1'
+            python tools/generate_voice_pack.py 2>&1 | tee "$GITHUB_WORKSPACE/voice-generation.log"
+            echo 'regenerated=true' >> "$GITHUB_OUTPUT"
+          fi
+          python tools/verify_voice_pack.py
+          echo '## Voice mode: Edge Korean Neural (InJoon/SunHi, 60 SHA256-verified WAV)' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cache only verified Edge Neural WAVs
+        if: ${{ steps.voice_gen.outputs.regenerated == 'true' }}
+        uses: actions/cache/save@v4
+        with:
+          path: _build_src/DolphinDriveAlertsCore/app/src/main/assets/voice
+          key: drivealerts-verified-edge-v026-${{ hashFiles('_build_src/DolphinDriveAlertsCore/tools/voice_prompts.json') }}-${{ github.run_id }}
+
+      - name: Verify v0.17.8 and v0.17.9 unchanged functionality
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          python tools/verify_v0178_integration.py
+          python tools/verify_v0179_integration.py
+
+      - name: Verify actual EQ Kotlin source against Android API contract stubs
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          if command -v kotlinc >/dev/null 2>&1 && command -v javac >/dev/null 2>&1; then
+            python tools/verify_v0177_eq_kotlin_compile.py
+            python tools/verify_v0178_media_kotlin_compile.py
+            python tools/verify_v0179_oem_kotlin_compile.py
+            python tools/verify_v0179_callback_kotlin_compile.py
+            python tools/verify_v01710_reference_bridge_kotlin.py
+            python tools/verify_v01711_bsd_any_indicator.py
+            python tools/verify_v01712_eq_gentle.py
+            python tools/verify_v01713_policy_kotlin.py
+            python tools/verify_v01714_adb_onboarding.py
+            python tools/verify_v01715_realcar_repair.py
+            python tools/verify_v01716_tbt_location_permissions.py
+            python tools/verify_v01716_manager_kotlin_compile.py
+            python tools/verify_v01717_split_task_ci.py
+            python tools/verify_v01718_reference_recovery.py
+            python tools/verify_v01719_alarm_stub_compile.py
+            python tools/verify_v01720_evidence_kotlin.py
+            python tools/verify_v01724_three_realcar_paths.py
+          else
+            echo 'kotlinc unavailable: Gradle :app:compileDebugKotlin will verify full Android API on this runner'
+          fi
+
+      - name: Resolve preinstalled Android SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-/usr/local/lib/android/sdk}}"
+          test -d "$SDK_ROOT"
+          SDKMANAGER="$(find "$SDK_ROOT/cmdline-tools" -type f -path '*/bin/sdkmanager' 2>/dev/null | sort -V | tail -n 1)"
+          if [ -z "$SDKMANAGER" ] || [ ! -x "$SDKMANAGER" ]; then
+            echo "ERROR: sdkmanager not found under $SDK_ROOT/cmdline-tools"
+            find "$SDK_ROOT" -maxdepth 4 -type f -name sdkmanager -print || true
+            exit 1
+          fi
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "SDKMANAGER=$SDKMANAGER" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$(dirname "$SDKMANAGER")" >> "$GITHUB_PATH"
+          "$SDKMANAGER" --version
+
+      - name: Accept Android SDK licenses and install API 34
+        shell: bash
+        run: |
+          set -euo pipefail
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" --install 'platform-tools' 'platforms;android-34' 'build-tools;34.0.0'
+          test -f "$ANDROID_SDK_ROOT/platforms/android-34/android.jar"
+          test -x "$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt2"
+          echo "Android API 34 / Build Tools 34.0.0 ready"
+
+      # AGP's implicit debug signing can select another keystore. Explicitly bind
+      # the signing config to the SAME key whose certificate SHA-256 was checked.
+      - name: Bind Gradle debug signing explicitly to the validated keystore
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f "$DOLPHIN_SIGNING_KEYSTORE_PATH"
+          python3 - <<'PYGRADLE'
+          import os, pathlib
+          p=pathlib.Path(os.environ['PROJECT_ROOT'])/'app'/'build.gradle.kts'
+          original=p.read_text()
+          needle='android {\n'
+          assert original.count(needle)==1, 'Cannot safely inject debug signing configuration'
+          block=(
+              '    signingConfigs {\n'
+              '        getByName("debug") {\n'
+              '            storeFile = file(System.getenv("DOLPHIN_SIGNING_KEYSTORE_PATH")\n'
+              '                ?: error("DOLPHIN_SIGNING_KEYSTORE_PATH is required"))\n'
+              '            storePassword = "android"\n'
+              '            keyAlias = "androiddebugkey"\n'
+              '            keyPassword = "android"\n'
+              '        }\n'
+              '    }\n'
+          )
+          p.write_text(original.replace(needle, needle+block, 1))
+          print('Applied explicit debug signing to the validated keystore (no key content in source).')
+          PYGRADLE
+          grep -q 'DOLPHIN_SIGNING_KEYSTORE_PATH' "$PROJECT_ROOT/app/build.gradle.kts"
+
+      - name: Compile real Android Kotlin with API 34 (authoritative regression gate)
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace --warning-mode all :app:compileDebugKotlin | tee "$GITHUB_WORKSPACE/gradle-build.log"
+
+      - name: Build installable debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_ROOT"
+          ./gradlew --no-daemon --stacktrace --warning-mode all :app:assembleDebug | tee -a "$GITHUB_WORKSPACE/gradle-build.log"
+
+      - name: Package APK and verification files
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          APK="$PROJECT_ROOT/app/build/outputs/apk/debug/app-debug.apk"
+          test -f "$APK"
+          python3 - "$APK" <<'PY'
+          import sys, zipfile, json, hashlib
+          apk=sys.argv[1]
+          with zipfile.ZipFile(apk) as z:
+              files=[n for n in z.namelist() if n.startswith('assets/voice/') and n.endswith('.wav')]
+              expected={f'assets/voice/{style}/{entry["file"]}' for style in ('male','female') for entry in json.loads(open(__import__('os').path.join(__import__('os').environ['PROJECT_ROOT'],'tools','voice_prompts.json')).read())}
+              assert set(files)==expected, f'Expected 60 WAV files, got {len(files)}'
+              manifest=json.loads(z.read('assets/voice/voice_pack_manifest.generated.json'))
+              assert len(manifest)==60, f'Expected 60 rows, got {len(manifest)}'
+              for row in manifest:
+                  p='assets/voice/'+row['style']+'/'+row['file']
+                  assert row['provider']=='edge-tts', f'Non-Edge voice: {p}'
+                  assert row['voice']==({'male':'ko-KR-InJoonNeural','female':'ko-KR-SunHiNeural'}[row['style']])
+                  assert hashlib.sha256(z.read(p)).hexdigest()==row['sha256'], f'WAV hash mismatch: {p}'
+                  assert len(z.read(p))>10000, f'Short/silent candidate: {p}'
+          print('APK_VOICE_PACK_INTEGRITY: 60/60 Edge Neural WAV + provenance SHA256 PASS')
+          PY
+          "$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify "$APK"
+          # Capture and report the two PUBLIC certificate fingerprints before comparison.
+          # This also distinguishes a parse failure from a real signing-key mismatch.
+          CERT_INFO=$("$ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner" verify --print-certs "$APK")
+          printf '%s\n' "$CERT_INFO" | grep -i 'certificate SHA-256 digest:' || true
+          SIGNING_CERT_SHA256=$(printf '%s\n' "$CERT_INFO" | python3 -c 'import sys,re; t=sys.stdin.read(); m=re.search(r"Signer\s*#?1\s+certificate\s+SHA-256\s+digest:\s*([0-9a-fA-F: ]+)",t,re.I); print(re.sub(r"[^0-9A-F]","",m.group(1).upper()) if m else "")')
+          if ! [[ "$SIGNING_CERT_SHA256" =~ ^[0-9A-F]{64}$ ]]; then
+            echo '::error::Could not parse APK signing certificate SHA-256. See apksigner certificate output above.'
+            exit 1
+          fi
+          echo "Configured signer certificate SHA-256: $DOLPHIN_CERT_SHA256"
+          echo "APK actual signer certificate SHA-256: $SIGNING_CERT_SHA256"
+          if [ "$SIGNING_CERT_SHA256" != "$DOLPHIN_CERT_SHA256" ]; then
+            echo '::error::APK is not signed by the configured validated keystore. Cannot distribute or claim in-place update.'
+            exit 1
+          fi
+          BADGING=$("$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt" dump badging "$APK" | head -n 1)
+          echo "$BADGING"
+          echo "$BADGING" | grep -F "name='com.byd.dolphin.drivealerts'" >/dev/null
+          echo "$BADGING" | grep -F "versionCode='52'" >/dev/null
+          printf '%s\n' "$SIGNING_CERT_SHA256" > "$GITHUB_WORKSPACE/dist/BUILT_APK_CERT_SHA256.txt"
+          cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.26-EDGE-NEURAL-SIGNED-UPDATE.apk"
+          sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.26-EDGE-NEURAL-SIGNED-UPDATE.apk" > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.26-EDGE-NEURAL-SIGNED-UPDATE.apk.sha256"
+          cp "$PROJECT_ROOT/INTEGRATION_V0173_EQ_SOUND_FOCUS_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0175_CAPTURE_RECONNECT_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0177_EQ_SDK_API_FIX_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0178_COMPREHENSIVE_FIX_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V0179_OEM_SIGNAL_RECOVERY_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/AVAS_LOG_ANALYSIS_20261009.json" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V0179.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V0179_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/GITHUB_BUILD_FAILURE_V0179_TO_V01710_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V01710_BRIDGE_RETURN_FIX_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V01710.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01710_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V01711_BSD_GENERIC_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V01711.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01711_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V01712_EQ_GENTLE_TUNE_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V01712.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01712_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V01713_ALL_ISSUES_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/REALCAR_TEST_MATRIX_V01713_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/SOURCE_BASELINE_DIFF_V01713.txt" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V01713.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01713_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V01714_ADB_FIRST_RUN_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01714_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V01714.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/SOURCE_BASELINE_DIFF_V01714.txt" "$GITHUB_WORKSPACE/dist/"
+          for f in INTEGRATION_V01715_REALCAR_EVIDENCE_REPAIR_KO.md REALCAR_TEST_MATRIX_V01715_KO.md BUILD_UPLOAD_V01715_KO.md STATIC_GATES_V01715.log SOURCE_BASELINE_DIFF_V01715.txt \
+            INTEGRATION_V01716_TBT_LOCATION_PERMISSIONS_KO.md \
+            REALCAR_TEST_MATRIX_V01716_KO.md \
+            BUILD_UPLOAD_V01716_KO.md \
+            STATIC_GATES_V01716.log \
+            SOURCE_BASELINE_DIFF_V01716.txt \
+            GITHUB_BUILD_FAILURE_V01716_TO_V01717_KO.md \
+            INTEGRATION_V01717_SPLIT_TASK_CI_FIX_KO.md \
+            BUILD_UPLOAD_V01717_KO.md \
+            STATIC_GATES_V01717.log \
+            SOURCE_BASELINE_DIFF_V01717.txt \
+            INTEGRATION_V01718_REFERENCE_GAPS_KO.md \
+            BUILD_UPLOAD_V01718_KO.md \
+            INTEGRATION_V01719_LAUNCHER_REFERENCE_KO.md \
+            BUILD_UPLOAD_V01719_KO.md \
+            LAUNCHER_V1_EVOLUTION_FORENSIC_20261013_KO.md \
+            SOURCE_BASELINE_DIFF_V01719.txt \
+            INTEGRATION_V01720_NAV_AUDIO_LAB_KO.md \
+            REALCAR_TEST_MATRIX_V01720_KO.md \
+            BUILD_UPLOAD_V01720_KO.md \
+            STATIC_GATES_V01720.log \
+            SOURCE_BASELINE_DIFF_V01720.txt \
+            CI_V01721_EDGE_403_RECOVERY_KO.md \
+            BUILD_UPLOAD_V01721_KO.md \
+            STATIC_GATES_V01721.log \
+            INTEGRATION_V01722_AUDIO_NORMAL_VOICE_KO.md \
+            BUILD_UPLOAD_V01722_KO.md \
+            INTEGRATION_V01723_SPLIT_RATIO_KO.md \
+            REALCAR_TEST_MATRIX_V01723_KO.md \
+            BUILD_UPLOAD_V01723_KO.md \
+            STATIC_GATES_V01723.log \
+            SOURCE_BASELINE_DIFF_V01723.txt \
+            INTEGRATION_V01724_THREE_REFERENCE_FIXES_KO.md \
+            REALCAR_TEST_MATRIX_V01724_KO.md \
+            BUILD_UPLOAD_V01724_KO.md \
+            SOURCE_BASELINE_DIFF_V01724.txt; do
+            cp "$PROJECT_ROOT/$f" "$GITHUB_WORKSPACE/dist/"
+          done
+          for f in GITHUB_BUILD_FAILURE_V01716_TO_V01717_KO.md INTEGRATION_V01717_SPLIT_TASK_CI_FIX_KO.md BUILD_UPLOAD_V01717_KO.md STATIC_GATES_V01717.log SOURCE_BASELINE_DIFF_V01717.txt; do
+            cp "$PROJECT_ROOT/$f" "$GITHUB_WORKSPACE/dist/"
+          done
+          cp "$PROJECT_ROOT/AUTOSTART_STATUS_KO.md" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/CI_V01721_EDGE_403_RECOVERY_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01721_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/STATIC_GATES_V01721.log" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/INTEGRATION_V01722_AUDIO_NORMAL_VOICE_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_UPLOAD_V01722_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/BUILD_AND_VALIDATION_STATUS_KO.txt" "$GITHUB_WORKSPACE/dist/" || true
+          cp "$PROJECT_ROOT/EDGE_TTS_V01726_RESTORE_KO.md" "$GITHUB_WORKSPACE/dist/"
+          cp "$PROJECT_ROOT/app/src/main/assets/voice/voice_pack_manifest.generated.json" "$GITHUB_WORKSPACE/dist/"
+          cp "$GITHUB_WORKSPACE/gradle-build.log" "$GITHUB_WORKSPACE/dist/" || true
+          echo '--- dist ---'
+          ls -lah "$GITHUB_WORKSPACE/dist"
+          echo '--- APK SHA256 ---'
+          cat "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts-v0.17.26-EDGE-NEURAL-SIGNED-UPDATE.apk.sha256"
+
+      - name: Upload installable APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinDriveAlerts-v0.17.26-EDGE-NEURAL-SIGNED-UPDATE
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload Gradle log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinDriveAlerts-v0.17.26-build-failure-log
+          path: |
+            gradle-build.log
+            voice-generation.log
+            _build_src/**/BUILD_AND_VALIDATION_STATUS_KO.txt
+          if-no-files-found: ignore
+          retention-days: 14
