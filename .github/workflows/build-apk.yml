@@ -1,4 +1,4 @@
-name: Build Dolphin Interior Light V2.5 One Screen ZIP Diagnostic
+name: Build Dolphin Interior Light V2.6 One Screen ZIP Diagnostic
 
 "on":
   workflow_dispatch:
@@ -21,7 +21,7 @@ jobs:
           python3 - <<'PY2'
           from pathlib import Path
           import zipfile, stat
-          source = Path('Dolphin_InteriorLight_V2_5_Source.zip')
+          source = Path('Dolphin_InteriorLight_V2_6_Source.zip')
           if not source.is_file():
               raise SystemExit('SOURCE ZIP MISSING: '+str(source))
           dest = Path('.dolphin-light-build')
@@ -102,7 +102,7 @@ jobs:
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: Dolphin-InteriorLight-V2-5-Diagnostic-APK
+          name: Dolphin-InteriorLight-V2-6-Diagnostic-APK
           path: |
             .dolphin-light-build/app/build/outputs/apk/debug/app-debug.apk
             .dolphin-light-build/apk_sha256.txt
@@ -113,7 +113,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: Dolphin-InteriorLight-V2-5-Build-Diagnostics
+          name: Dolphin-InteriorLight-V2-6-Build-Diagnostics
           path: |
             .dolphin-light-build/static_gate.log
             .dolphin-light-build/java_syntax.log

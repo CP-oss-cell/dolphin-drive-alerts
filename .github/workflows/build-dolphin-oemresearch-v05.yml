@@ -1,0 +1,80 @@
+name: Dolphin OEM Launcher Research v0.5 - Realcar Followup
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+      - name: Install SDK platform / build tools if missing
+        shell: bash
+        run: |
+          set -euo pipefail
+          : "${ANDROID_HOME:?Android SDK unavailable}"
+          command -v sdkmanager
+          if [[ ! -s "$ANDROID_HOME/platforms/android-34/android.jar" || ! -x "$ANDROID_HOME/build-tools/34.0.0/aapt" ]]; then
+            yes | sdkmanager --licenses >/dev/null || true
+            sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+          fi
+          test -s "$ANDROID_HOME/platforms/android-34/android.jar"
+          test -x "$ANDROID_HOME/build-tools/34.0.0/aapt"
+      - name: Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Unpack v0.5 source
+        shell: bash
+        run: |
+          set -euo pipefail
+          unzip -oq DolphinOEMResearch-v0.5.0-source.zip -d "$RUNNER_TEMP/oemresearch-v05"
+          test -f "$RUNNER_TEMP/oemresearch-v05/app/build.gradle"
+      - name: Static safety checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 "$RUNNER_TEMP/oemresearch-v05/tools/verify_source.py" "$RUNNER_TEMP/oemresearch-v05"
+          mkdir -p "$RUNNER_TEMP/java-parser"
+          javac -d "$RUNNER_TEMP/java-parser" "$RUNNER_TEMP/oemresearch-v05/tools/ParseJava.java"
+          java -cp "$RUNNER_TEMP/java-parser" ParseJava "$RUNNER_TEMP"/oemresearch-v05/app/src/main/java/com/dolphin/goodlock/probe/*.java
+      - name: Build debug APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon -p "$RUNNER_TEMP/oemresearch-v05" --stacktrace :app:assembleDebug
+      - name: Verify APK safety and publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$RUNNER_TEMP/oemresearch-v05/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          mkdir -p dist
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump badging "$APK" | tee dist/apk-badging.txt
+          # Keep same package ID for update compatibility; versionCode raised to 5.
+          grep -q "package: name='com.dolphin.goodlock.probe.v04'" dist/apk-badging.txt
+          grep -q "versionCode='5'" dist/apk-badging.txt
+          "$ANDROID_HOME/build-tools/34.0.0/aapt" dump permissions "$APK" | tee dist/apk-permissions.txt
+          grep -q 'com.android.launcher3.home.permission.READ_HOME' dist/apk-permissions.txt
+          if grep -E '(WRITE_HOME|READ_CARD|WRITE_CARD|android.permission.INTERNET|READ_LOGS|SYSTEM_ALERT_WINDOW)' dist/apk-permissions.txt; then
+            echo 'Unexpected elevated permission request'; exit 1
+          fi
+          cp "$APK" dist/DolphinOEMResearch-v0.5.0-debug.apk
+          sha256sum dist/DolphinOEMResearch-v0.5.0-debug.apk > dist/SHA256SUMS.txt
+      - name: Export APK and build evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinOEMResearch-v0.5.0-APK
+          path: dist/*
+          if-no-files-found: error
