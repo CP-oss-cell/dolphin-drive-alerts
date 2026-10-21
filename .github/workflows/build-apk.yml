@@ -1,0 +1,123 @@
+name: Build Dolphin Interior Light V2.5 One Screen ZIP Diagnostic
+
+"on":
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout uploaded source ZIP
+        uses: actions/checkout@v4
+
+      - name: Validate and unpack ZIP into isolated project
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY2'
+          from pathlib import Path
+          import zipfile, stat
+          source = Path('Dolphin_InteriorLight_V2_5_Source.zip')
+          if not source.is_file():
+              raise SystemExit('SOURCE ZIP MISSING: '+str(source))
+          dest = Path('.dolphin-light-build')
+          dest.mkdir(exist_ok=True)
+          with zipfile.ZipFile(source) as archive:
+              if archive.testzip() is not None:
+                  raise SystemExit('SOURCE ZIP CRC INVALID')
+              info_list = archive.infolist()
+              if len(info_list) > 200 or sum(i.file_size for i in info_list) > 10_000_000:
+                  raise SystemExit('SOURCE ZIP TOO LARGE')
+              for info in info_list:
+                  p = Path(info.filename)
+                  if (p.is_absolute() or '..' in p.parts or
+                      info.filename.startswith('.github/') or
+                      stat.S_ISLNK(info.external_attr >> 16)):
+                      raise SystemExit('UNSAFE ZIP MEMBER: '+info.filename)
+              archive.extractall(dest)
+          required = (
+              'settings.gradle','build.gradle','app/build.gradle',
+              'app/src/main/AndroidManifest.xml',
+              'app/src/main/java/com/dolphin/insidelightprobe/MainActivity.java',
+              'app/src/main/java/com/dolphin/insidelightprobe/LogShareProvider.java',
+              'tests/check_source_safety.py','tests/JavaSyntaxCheck.java')
+          for name in required:
+              if not (dest/name).is_file():
+                  raise SystemExit('MISSING SOURCE: '+name)
+          target = dest/'.github/workflows/build-apk.yml'
+          target.parent.mkdir(parents=True,exist_ok=True)
+          target.write_bytes(Path('.github/workflows/build-apk.yml').read_bytes())
+          print('Validated source ZIP and unpacked it independently of existing repository files.')
+          PY2
+
+      - name: Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Run static checks and Java parser
+        working-directory: .dolphin-light-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tests/check_source_safety.py 2>&1 | tee static_gate.log
+          mkdir -p .verify
+          javac -d .verify tests/JavaSyntaxCheck.java
+          java -cp .verify JavaSyntaxCheck \
+            app/src/main/java/com/dolphin/insidelightprobe/MainActivity.java \
+            app/src/main/java/com/dolphin/insidelightprobe/LogShareProvider.java 2>&1 | tee java_syntax.log
+
+      - name: Set up Android SDK without legacy tools package
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: 'false'
+
+      - name: Install Android SDK 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 2>&1 | tee .dolphin-light-build/sdk_install.log
+
+      - name: Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Compile real Android APK
+        working-directory: .dolphin-light-build
+        shell: bash
+        run: |
+          set -euo pipefail
+          gradle --no-daemon --stacktrace :app:assembleDebug 2>&1 | tee build.log
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          sha256sum app/build/outputs/apk/debug/app-debug.apk | tee apk_sha256.txt
+
+      - name: Upload Android APK and checksum
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dolphin-InteriorLight-V2-5-Diagnostic-APK
+          path: |
+            .dolphin-light-build/app/build/outputs/apk/debug/app-debug.apk
+            .dolphin-light-build/apk_sha256.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload diagnostics on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Dolphin-InteriorLight-V2-5-Build-Diagnostics
+          path: |
+            .dolphin-light-build/static_gate.log
+            .dolphin-light-build/java_syntax.log
+            .dolphin-light-build/sdk_install.log
+            .dolphin-light-build/build.log
+          if-no-files-found: warn
+          retention-days: 15
