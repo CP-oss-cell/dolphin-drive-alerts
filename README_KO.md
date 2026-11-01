@@ -1,8 +1,8 @@
-# Dolphin OEM HUD Bridge v0.9 — 대시보드 통합판
+# Dolphin OEM HUD Bridge v0.9.1 — 대시보드 통합판
 
 이 프로젝트는 **BYD 돌핀 순정 내비 길안내(TBT) → 아리아/TPLAY HUD Q** 연결을 위한 독립 Android 앱 전체 소스입니다. 기존 MCON K를 코드에 포함하지 않으며 차량 ECU에 명령을 송신하지 않습니다.
 
-## v0.9 사용자 화면 개편
+## v0.9.1 사용자 화면 개편
 
 복잡한 번호별 버튼 나열을 없애고 **한 화면의 대시보드**로 정리했습니다.
 
@@ -25,8 +25,8 @@
 ## GitHub Actions에서 빌드
 
 1. 이 ZIP을 **압축 해제**합니다. 숨김폴더 `.github`까지 모두 새 GitHub 저장소의 최상위에 업로드합니다.
-2. **Actions → Build Dolphin OEM HUD Bridge v0.9 → Run workflow**를 선택합니다. push에도 자동 빌드가 설정되어 있습니다.
-3. 성공 시 `DolphinOemHudBridge-v0.9-DASHBOARD-debug` 아티팩트에서 `app-debug.apk`를 받습니다.
+2. **Actions → Build Dolphin OEM HUD Bridge v0.9.1 → Run workflow**를 선택합니다. push에도 자동 빌드가 설정되어 있습니다.
+3. 성공 시 `DolphinOemHudBridge-v0.9.1-DASHBOARD-debug` 아티팩트에서 `app-debug.apk`를 받습니다.
 
 앱은 Android 10 이상, minSdk 29 / targetSdk 29, 패키지 `com.dolphin.oemhud`입니다. 빌드는 Java 17, Gradle 8.6, Android Gradle Plugin 8.4.1, Kotlin 플러그인 2.0.21, compileSdk 34, `dev.mobile:dadb:1.2.8`을 사용합니다.
 
@@ -54,3 +54,14 @@ bash tools/run_dashboard_typecheck.sh
 ```
 
 `TEST_REPORT.md`에 실제 실행 결과와 미검증 사항을 별도로 기록했습니다.
+
+## GitHub CI 실제 실패 원인 수정 — v0.9.1
+
+2026-11-01 20:11 UTC GitHub Actions 로그에서 Kotlin/Java 컴파일은 성공했지만
+`:app:mergeDebugJavaResource`가 `META-INF/LICENSE.md` 중복(9개 JUnit JAR)으로 실패했습니다.
+`app/build.gradle`에 `packaging.resources.pickFirsts` 설정을 넣어 LICENSE.md,
+LICENSE-notice.md, NOTICE.md가 중복될 때 각 1개만 APK에 패키징합니다.
+서비스 로더에 필요한 `META-INF/services/**`는 제외하지 않습니다.
+
+이번 수정은 Gradle 리소스 병합 충돌을 해결하도록 구성했습니다.
+새 GitHub 빌드 성공/실차 HUD 동작까지 증명한 것은 아닙니다.
