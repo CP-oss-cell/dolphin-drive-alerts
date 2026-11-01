@@ -1,1 +1,0 @@
-package android.os; public class Bundle extends java.util.HashMap<String,Object> { public void putInt(String k,int v){put(k,v);} public void putBoolean(String k,boolean v){put(k,v);}public void putString(String k,String v){put(k,v);} }

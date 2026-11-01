@@ -1,2 +1,0 @@
-package com.dolphin.oemhud;import android.content.Context;import java.util.*;
-public class BridgeLog{public static final String STORE="nav_bridge";public static final List<String> events=new ArrayList<>();public static void event(Context c,String s){events.add(s);}}

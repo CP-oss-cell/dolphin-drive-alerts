@@ -1,1 +1,0 @@
-package android.bluetooth;import java.util.*;public class BluetoothGattDescriptor{public static final byte[] ENABLE_NOTIFICATION_VALUE={1,0};private final UUID uuid;public BluetoothGattDescriptor(UUID u){uuid=u;}public void setValue(byte[] v){}}
