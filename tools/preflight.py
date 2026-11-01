@@ -22,7 +22,7 @@ for tag,klass in [('activity','.MainActivity'),('service','.BridgeService'),('se
     check('Manifest component '+klass,present)
 check('Android minSDK 29',"minSdk 29" in (root/'app/build.gradle').read_text())
 check('Android targetSDK 29',"targetSdk 29" in (root/'app/build.gradle').read_text())
-check('App version 0.9',"versionCode 10" in (root/'app/build.gradle').read_text())
+check('App version 0.9.1',"versionCode 11" in (root/'app/build.gradle').read_text())
 check('AutoNavi broadcast registered','AUTONAVI_STANDARD_BROADCAST_SEND' in code('BridgeService.java'))
 check('TBT accepted only while enabled','getBoolean("enabled",false)' in code('BridgeService.java'))
 check('Off state blocks TBT history','getBoolean("enabled",false)' in code('BridgeLog.java'))

@@ -6,11 +6,23 @@ android {
     applicationId 'com.dolphin.oemhud'
     minSdk 29
     targetSdk 29
-    versionCode 10
-    versionName '0.9-dashboard'
+    versionCode 11
+    versionName '0.9.1-ci-packaging-fix'
   }
   compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
   kotlinOptions { jvmTarget = '17' }
+  // CI fix: JUnit Platform/Jupiter transitive JARs contain identical META-INF licenses.
+  // Preserve one copy of each notice instead of failing mergeDebugJavaResource.
+  // Do not exclude META-INF/services/** or other runtime service descriptors.
+  packaging {
+    resources {
+      pickFirsts += [
+        '/META-INF/LICENSE.md',
+        '/META-INF/LICENSE-notice.md',
+        '/META-INF/NOTICE.md'
+      ]
+    }
+  }
 }
 
 dependencies { implementation 'dev.mobile:dadb:1.2.8' }
