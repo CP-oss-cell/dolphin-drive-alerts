@@ -1,0 +1,1 @@
+v0.7: Source-level simulated Android and BLE GATT tests PASS. APK build NOT EXECUTED. Vehicle TBT and physical HUD output NOT VERIFIED.

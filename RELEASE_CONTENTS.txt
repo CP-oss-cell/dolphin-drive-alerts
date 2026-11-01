@@ -1,0 +1,10 @@
+Dolphin OEM HUD Bridge v0.9
+ALL-IN-ONE build source package
+- Android app source: app/src/main/
+- Gradle project: build.gradle, app/build.gradle, settings.gradle, gradle.properties
+- GitHub Actions YAML: .github/workflows/build-oem-hud-bridge.yml
+- Protocol, ADB, TBT, BLE source, dashboard MainActivity
+- Regression tests and offline Java UI typecheck generator
+- README_KO.md, TEST_REPORT.md, verification/V09_TEST_RESULTS.log
+No compiled APK is included.
+Remote Android SDK build and hardware operation are NOT verified.

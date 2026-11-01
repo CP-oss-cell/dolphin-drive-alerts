@@ -1,0 +1,4 @@
+v0.8 HUD 부저/밝기 통합 소스 + .github/workflows/build-oem-hud-bridge.yml
+ZIP 전체 압축 해제, 숨김 .github 포함 저장소 루트에 업로드.
+Actions > Build Dolphin OEM HUD Bridge v0.8 > Run workflow
+실제 APK 빌드 및 실차 출력 검증은 이 환경에서 수행되지 않음.

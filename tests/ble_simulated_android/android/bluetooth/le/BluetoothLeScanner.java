@@ -1,0 +1,1 @@
+package android.bluetooth.le;public class BluetoothLeScanner{public void startScan(ScanCallback c){}public void stopScan(ScanCallback c){}}

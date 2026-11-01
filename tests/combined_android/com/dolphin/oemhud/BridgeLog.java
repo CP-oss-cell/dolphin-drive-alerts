@@ -1,0 +1,1 @@
+package com.dolphin.oemhud;import android.content.Context;public class BridgeLog{public static final String STORE="nav_bridge";public static int cues,events;public static void event(Context c,String s){events++;}public static void cue(Context c,NavCue cue){cues++;BridgeService.onCue(cue);}}

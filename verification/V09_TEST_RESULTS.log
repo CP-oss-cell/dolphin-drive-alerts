@@ -1,0 +1,159 @@
+PASS PREFLIGHT Manifest XML parse
+PASS PREFLIGHT Manifest permission android.permission.INTERNET
+PASS PREFLIGHT Manifest permission android.permission.FOREGROUND_SERVICE
+PASS PREFLIGHT Manifest permission android.permission.RECEIVE_BOOT_COMPLETED
+PASS PREFLIGHT Manifest permission android.permission.BLUETOOTH
+PASS PREFLIGHT Manifest permission android.permission.BLUETOOTH_ADMIN
+PASS PREFLIGHT Manifest permission android.permission.ACCESS_FINE_LOCATION
+PASS PREFLIGHT Manifest permission android.permission.WRITE_SECURE_SETTINGS
+PASS PREFLIGHT Manifest component .MainActivity
+PASS PREFLIGHT Manifest component .BridgeService
+PASS PREFLIGHT Manifest component .NavAccessibilityService
+PASS PREFLIGHT Manifest component .NavNotificationService
+PASS PREFLIGHT Manifest component .BootReceiver
+PASS PREFLIGHT Android minSDK 29
+PASS PREFLIGHT Android targetSDK 29
+PASS PREFLIGHT App version 0.9
+PASS PREFLIGHT AutoNavi broadcast registered
+PASS PREFLIGHT TBT accepted only while enabled
+PASS PREFLIGHT Off state blocks TBT history
+PASS PREFLIGHT MCon known packet prefix
+PASS PREFLIGHT BLE FFF2 characteristic
+PASS PREFLIGHT Monotonic BLE TTL
+PASS PREFLIGHT CCCD serialization gate
+PASS PREFLIGHT Old GATT discarded on ACK timeout
+PASS PREFLIGHT ADB CAS gate
+PASS PREFLIGHT ADB connection keeps persistent RSA files
+PASS PREFLIGHT No root request in runtime
+PASS PREFLIGHT CI workflow exists
+PASS PREFLIGHT HUD setting validated protocol
+PASS PREFLIGHT Camera buzzer / brightness controls
+PASS PREFLIGHT Dashboard single owner for buzzer + brightness
+PASS PREFLIGHT Dashboard ADB single setup action
+PASS PREFLIGHT Dashboard operational start/stop single toggle
+PASS PREFLIGHT Dashboard advanced diagnostics collapsed by default
+PASS PREFLIGHT Dashboard v0.9 branding
+DASHBOARD PREFLIGHT SUMMARY 35 / 35 PASS
+PASS text right 300m
+PASS text left 1.2km
+PASS autonavi icon 2
+PASS HUD encode icon 2
+PASS autonavi icon 3
+PASS HUD encode icon 3
+PASS autonavi icon 4
+PASS HUD encode icon 4
+PASS autonavi icon 5
+PASS HUD encode icon 5
+PASS autonavi icon 6
+PASS HUD encode icon 6
+PASS autonavi icon 7
+PASS HUD encode icon 7
+PASS autonavi icon 8
+PASS HUD encode icon 8
+PASS autonavi icon 9
+PASS HUD encode icon 9
+PASS cruise/no turn no HUD frame
+PASS roundabout no invented direction
+PASS AUTO distance with unit
+PASS prefer raw meters over formatted distance
+PASS broadcast type rejection
+PASS invalid distance rejected
+PASS Chinese km distance
+PASS missing distance fails closed
+PASS two maneuvers first arrow matches distance
+PASS ignore speed-limit before maneuver
+PASS direction before distance
+PASS avoid pairing second turn distance with first
+PASS do not infer turn from distance only
+PASS choose first instruction with two distances
+PASS grouped 1200 metres not 1m
+PASS grouped five digits
+PASS comma decimal km
+PASS grouped thousands km
+PASS united bare grouped distance
+PASS overflow rejected
+PASS diagonal forward-left MCon map
+PASS diagonal forward-right MCon map
+PASS diagonal back-left MCon map
+PASS diagonal back-right MCon map
+PASS speed limit not mistaken for 80km turn
+PASS raw grouped metres without AUTO
+PASS OEM text fallback includes distance
+NavCue tests: 45 PASS
+PASS right300 194D0105000500012C2F
+PASS left30 194D0105000200001E2F
+PASS uturn1200 194D010500070004B02F
+PASS roundaboutflag 194D0105010300003C2F
+PASS input validation
+ALL PASS
+PASS HUDSET low buzzer
+PASS HUDSET normal buzzer
+PASS HUDSET high buzzer
+PASS HUDSET buzzer off
+PASS HUDSET day-bright night-dim auto profile
+PASS HUDSET manual fixed level
+PASS HUDSET valid buzzer frame
+PASS HUDSET valid luminance frame
+PASS HUDSET reject undocumented sound level
+PASS HUDSET reject unsupported brightness level
+PASS HUDSET reject unknown command
+PASS HUDSET reject null frame
+HUD SETTINGS 12 PASS
+PASS BLE connected GATT FFF2
+PASS BLE enqueue right 300
+PASS BLE real connector invoked characteristic write
+PASS BLE wire packet content
+PASS BLE write callback recorded
+PASS BLE manual disconnect shuts down
+PASS BLE connected pending no callback
+PASS BLE connect timeout schedules reconnect
+PASS BLE connect timeout reopened GATT
+PASS BLE service timeout detected
+PASS BLE service timeout auto-reconnect
+PASS BLE saved HUD MAC accepted without transient BLE name
+PASS BLE no GATT ack triggers bounded three attempts
+PASS BLE GATT timeout errors recorded
+PASS BLE manual disconnect cancels watchdog/reconnect
+PASS BLE guidance deferred while disconnected
+PASS BLE pending GATT later becomes ready
+PASS BLE deferred cue flushed after connection
+PASS BLE late-write scenario connected
+PASS BLE ACK timeout closes original GATT instead of reusing it
+PASS BLE stale GATT callback ignored
+PASS BLE fresh session ACK completes queued turn
+PASS BLE missing FFF2 characteristic refuses HUD TX
+PASS BLE missing characteristic shown in status
+PASS BLE late GATT connection ready
+PASS BLE stale TBT after 10s never transmitted
+PASS BLE non-HUD BLE name blocked
+PASS BLE HUDQ variant name allowed
+PASS BLE CCCD pending prevents premature FFF2 write
+PASS BLE cue queued while CCCD pending
+PASS BLE no characteristic write overlaps descriptor write
+PASS BLE CCCD callback transitions ready
+PASS BLE queued cue sent only after CCCD completion
+PASS BLE CCCD timeout not treated as success
+PASS BLE CCCD timeout reconnects with fresh GATT
+PASS BLE buzzer setting accepted
+PASS BLE buzzer uses live FFF2 GATT write
+PASS BLE buzzer low encoded correctly
+PASS BLE brightness setting accepted
+PASS BLE day/night brightness frame encoded
+PASS BLE unverified setting frame rejected
+PASS BLE saved buzzer and brightness reapplied after BLE reconnect
+PASS BLE last restored control is brightness frame
+BLE RUNTIME 43 PASS
+PASS INTEGRATION OEM broadcast reaches REAL FFF2 GATT writer
+PASS INTEGRATION OEM grouped distance + turn code encoded exactly
+PASS INTEGRATION onCharacteristicWrite completed frame
+PASS INTEGRATION same TBT deduplicated
+PASS INTEGRATION unverified turn icon fails closed
+PASS INTEGRATION user stop blocks OEM broadcasts
+PASS INTEGRATION disconnect clears auto-connect MAC
+REAL SERVICE + REAL CONNECTOR 7 PASS
+SIM1 broadcast received: cueRecords=1; hudSendAttempts=1
+SIM2 decoded direction=??? icon=5 meters=300 encoded=194D0105000400012C2F
+SIM3 notification path: cueRecords=2; hudSendAttempts=2 hudPackets=2
+PASS ADB Kotlin source type/syntax check against OFFLINE Android/Dadb stubs (NOT an Android SDK build)
+
+ALL AVAILABLE LOCAL SIMULATIONS PASS. ANDROID APK ASSEMBLE / REAL CAR / HUD HARDWARE ARE NOT VERIFIED.

@@ -1,0 +1,1 @@
+package android.bluetooth; public interface BluetoothProfile{int STATE_CONNECTED=2;int STATE_DISCONNECTED=0;}

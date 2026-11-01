@@ -1,0 +1,16 @@
+plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }
+android {
+  namespace 'com.dolphin.oemhud'
+  compileSdk 34
+  defaultConfig {
+    applicationId 'com.dolphin.oemhud'
+    minSdk 29
+    targetSdk 29
+    versionCode 10
+    versionName '0.9-dashboard'
+  }
+  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+  kotlinOptions { jvmTarget = '17' }
+}
+
+dependencies { implementation 'dev.mobile:dadb:1.2.8' }

@@ -1,0 +1,1 @@
+package android.bluetooth.le;public class ScanCallback{public void onScanResult(int callbackType,ScanResult result){}public void onScanFailed(int code){}}
