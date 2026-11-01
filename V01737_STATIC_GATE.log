@@ -1,0 +1,83 @@
+PASS versionCode-at-least-61
+PASS 23-detected-events
+PASS catalog-complete-no-duplicates
+PASS voice-prompts-supplied
+PASS preference-default-is-on
+PASS user-setting-is-durable
+PASS delivery-filter-is-real
+PASS signal-decoding-not-disabled
+PASS new-activity-is-registered
+PASS new-activity-uses-own-density
+PASS all-alerts-in-real-ui
+PASS safe-write-failure
+PASS dashboard-wires-open-activity
+PASS enabled-vs-verified-separated
+PASS read-only-metadata-schema
+PASS one-file-in-session-zip
+PASS previous-capture-archive-preserved
+PASS no-oem-setter-added
+PASS original-dashboard-retained
+PASS live Kotlin catalog parity + four groups
+V01735_FEATURE_GATES_PASS 19 SOURCE_ONLY
+PASS versionCode-at-least-60
+PASS six-home-cards
+PASS all-15-sections-mapped
+PASS main-status-six-keys
+PASS status-no-fake-verified
+PASS quick-actions-live
+PASS capture-original-wiring
+PASS capture-additional-shortcut
+PASS log-share-live
+PASS card-drilldown-live
+PASS back-navigation
+PASS all-3-BSD-options
+PASS steering-preserved
+PASS all-three-alert-output-modes
+PASS all-three-voice-modes
+PASS driving-alert-master-switch
+PASS nav-five-checkboxes
+PASS seven-legacy-activities
+PASS runtime-safe-read
+PASS no-oem-writes
+PASS keep-preferences
+PASS app-dpi-honest
+PASS keep-zip-evidence
+V01734_DASHBOARD_PASS 23 SOURCE-GATES-ONLY
+PASS self-context-local-override
+PASS durable-setting
+PASS valid-app-range
+PASS all-owned-activities
+PASS rotation-unchanged
+PASS external-nav-unchanged
+PASS no-global-target
+PASS explicit-recovery-only
+PASS user-facing-scope-honest
+PASS ui-can-save
+PASS preserved-pcm-onset-priority
+PASS versionCode-at-least-59
+PASS native Kotlin rules/context ownership/save-restore
+V01733_SELF_APP_DPI: PASS 12 static rules
+PASS entrypoint-preserved
+PASS capture-start-end-preserved
+PASS download-atomic
+PASS session-captured-jsonl
+PASS quick-oem-diag-included
+PASS nav-route-lab-included
+PASS old-observation-filter
+PASS force-start-stop
+PASS request-time-metadata
+PASS nav-metadata-before-worker
+PASS nav-completion-gate
+PASS nav-status-differentiated
+PASS sha256-manifest-in-zip
+PASS zip-verify-crc
+PASS zip-verify-file-hashes
+PASS nav-output-success-not-claimed
+PASS no-shared-prefs-export
+PASS no-oem-write-introduced
+PASS 9-menus-unchanged
+PASS retains-existing-nav-service
+SESSION_SELECTOR_TEST_PASS: forced START/STOP; queued quick request; session isolation; nav COMPLETE/PARTIAL/IN_PROGRESS; filtered observations
+DA010_UNIFIED_EVIDENCE_SOURCE_CHECKS=20/20
+
+V01737_INTERNAL_SPLIT_GATES_PASS (24 static+Kotlin geometry); WORKFLOW_BASH_BLOCKS=17;SOURCE_ZIP_CRC=PASS
