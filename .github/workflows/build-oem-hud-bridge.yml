@@ -1,11 +1,11 @@
-name: Build Dolphin OEM HUD Bridge v0.9.7 (ZIP + YML)
+name: Build Dolphin OEM HUD Bridge v0.10.0 (ZIP + YML)
 
 on:
   workflow_dispatch:
   push:
     branches: ['**']
     paths:
-      - 'Dolphin_OEM_HUD_Bridge_v0.9.7_SOURCE.zip'
+      - 'Dolphin_OEM_HUD_Bridge_v0.10.0_SOURCE.zip'
       - '.github/workflows/build-oem-hud-bridge.yml'
 
 jobs:
@@ -17,11 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify and extract v0.9.7 source ZIP
+      - name: Verify and extract v0.10.0 source ZIP
         working-directory: .
         run: |
           set -euo pipefail
-          SOURCE='Dolphin_OEM_HUD_Bridge_v0.9.7_SOURCE.zip'
+          SOURCE='Dolphin_OEM_HUD_Bridge_v0.10.0_SOURCE.zip'
           test -s "$SOURCE" || { echo "::error::Upload $SOURCE to the repository root on the SAME branch"; exit 1; }
           unzip -t "$SOURCE" >/dev/null
           mkdir -p hud-bridge-build
@@ -46,7 +46,7 @@ jobs:
           gradle-version: '8.6'
 
       - name: Verify source release identity (not YAML byte equality)
-        run: python3 tools/verify_release_bundle.py --version v0.9.7 --code 17
+        run: python3 tools/verify_release_bundle.py --version v0.10.0 --code 20
 
       - name: Check Android manifest and source preflight
         run: python3 tools/preflight.py
@@ -69,6 +69,12 @@ jobs:
       - name: Type-check TMAP accessibility and notification receivers
         run: bash tools/run_nav_receiver_typecheck.sh
 
+      - name: Compile and exercise read-only OEM Binder boundary checks
+        run: bash tools/run_oem_binder_probe_typecheck.sh
+
+      - name: Validate HUD-RE-005 source evidence
+        run: python3 tools/validate_re005_evidence.py
+
       - name: Syntax-check ADB Kotlin source
         run: bash tools/run_adb_kotlin_syntax.sh
 
@@ -87,20 +93,20 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
           test -x "$AAPT"
           "$AAPT" dump badging app-debug.apk | tee apk_badging.txt
-          grep -Fq "versionCode='17'" apk_badging.txt
-          grep -Fq "versionName='0.9.7-ci-release'" apk_badging.txt
+          grep -Fq "versionCode='20'" apk_badging.txt
+          grep -Fq "versionName='0.10.0-oem-ipc-probe'" apk_badging.txt
           "$AAPT" dump xmltree app-debug.apk AndroidManifest.xml > apk_manifest_tree.txt
           grep -Fq 'NavAppPickerActivity' apk_manifest_tree.txt
-          mv app-debug.apk DolphinOemHudBridge_v0.9.7_vc17.apk
-          sha256sum DolphinOemHudBridge_v0.9.7_vc17.apk > SHA256SUMS.txt
-          echo 'CI VERIFIED: v0.9.7, versionCode=17, app picker present' > BUILD_VERIFIED.txt
+          mv app-debug.apk DolphinOemHudBridge_v0.10.0_vc20.apk
+          sha256sum DolphinOemHudBridge_v0.10.0_vc20.apk > SHA256SUMS.txt
+          echo 'CI VERIFIED: v0.10.0, versionCode=20, app picker present' > BUILD_VERIFIED.txt
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: DolphinOemHudBridge-v0.9.7-vc17-TMAP-INPUT-debug
+          name: DolphinOemHudBridge-v0.10.0-vc20-TMAP-INPUT-debug
           path: |
-            hud-bridge-build/app/build/outputs/apk/debug/DolphinOemHudBridge_v0.9.7_vc17.apk
+            hud-bridge-build/app/build/outputs/apk/debug/DolphinOemHudBridge_v0.10.0_vc20.apk
             hud-bridge-build/app/build/outputs/apk/debug/SHA256SUMS.txt
             hud-bridge-build/app/build/outputs/apk/debug/apk_badging.txt
             hud-bridge-build/app/build/outputs/apk/debug/BUILD_VERIFIED.txt
