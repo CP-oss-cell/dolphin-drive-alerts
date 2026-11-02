@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  SOURCE_ZIP: DolphinDrive_v01744_source.zip
+  SOURCE_ZIP: v01744_source.zip
 
 jobs:
   build-apk:
@@ -28,8 +28,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -f "$SOURCE_ZIP"
+          # v0.17.44 GitHub repo actually contains v01744_source.zip.
+          # Accept only explicitly known filenames (never silently select an older version).
+          if [ ! -f "$SOURCE_ZIP" ]; then
+            for candidate in v01744_source.zip DolphinDrive_v01744_source.zip; do
+              if [ -f "$candidate" ]; then
+                SOURCE_ZIP="$candidate"
+                break
+              fi
+            done
+          fi
+          if [ ! -f "$SOURCE_ZIP" ]; then
+            echo "::error::v0.17.44 source ZIP missing in repository root. Expected v01744_source.zip (or DolphinDrive_v01744_source.zip)."
+            echo 'Repository root files:'
+            find . -maxdepth 1 -type f -printf '%f\n' | sort
+            exit 1
+          fi
+          echo "SOURCE_ZIP=$SOURCE_ZIP" >> "$GITHUB_ENV"
           echo "Using source: $SOURCE_ZIP"
+          unzip -tq "$SOURCE_ZIP" | tail -n 2
           sha256sum "$SOURCE_ZIP"
 
       - name: Extract v0.17.44 source
