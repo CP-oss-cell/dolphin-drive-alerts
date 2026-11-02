@@ -246,7 +246,19 @@ jobs:
           BADGING=$("$ANDROID_SDK_ROOT/build-tools/34.0.0/aapt" dump badging "$APK" | head -n 1)
           echo "$BADGING"
           echo "$BADGING" | grep -F "name='com.byd.dolphin.drivealerts'" >/dev/null
-          echo "$BADGING" | grep -F "versionCode='68'" >/dev/null
+          # Read expected version from the SAME Gradle source that was just compiled.
+          # Do not duplicate a manually typed versionCode in the CI workflow.
+          APP_GRADLE="$PROJECT_ROOT/app/build.gradle.kts"
+          EXPECTED_CODE=$(sed -nE 's/^[[:space:]]*versionCode[[:space:]]*=[[:space:]]*([0-9]+)[[:space:]]*$/\1/p' "$APP_GRADLE")
+          EXPECTED_NAME=$(sed -nE 's/^[[:space:]]*versionName[[:space:]]*=[[:space:]]*"([^"]+)"[[:space:]]*$/\1/p' "$APP_GRADLE")
+          if ! [[ "$EXPECTED_CODE" =~ ^[0-9]+$ ]] || [ -z "$EXPECTED_NAME" ]; then
+            echo '::error::Could not read a unique Gradle versionCode/versionName.'
+            exit 1
+          fi
+          echo "Gradle versionCode=$EXPECTED_CODE versionName=$EXPECTED_NAME"
+          echo "$BADGING" | grep -F "versionCode='$EXPECTED_CODE'" >/dev/null || { echo "::error::APK and Gradle versionCode differ"; exit 1; }
+          echo "$BADGING" | grep -F "versionName='$EXPECTED_NAME'" >/dev/null || { echo "::error::APK and Gradle versionName differ"; exit 1; }
+          echo "APK_VERSION_MATCH: $EXPECTED_NAME (code $EXPECTED_CODE)" >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' "$SIGNING_CERT_SHA256" > "$GITHUB_WORKSPACE/dist/BUILT_APK_CERT_SHA256.txt"
           cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDrive_v01743-SIGNED.apk"
           sha256sum "$GITHUB_WORKSPACE/dist/DolphinDrive_v01743-SIGNED.apk" > "$GITHUB_WORKSPACE/dist/DolphinDrive_v01743-SIGNED.apk.sha256"

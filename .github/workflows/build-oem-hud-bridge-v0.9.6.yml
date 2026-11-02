@@ -1,0 +1,95 @@
+name: Build Dolphin OEM HUD Bridge v0.9.6 (ZIP + YML)
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - 'Dolphin_OEM_HUD_Bridge_v0.9.6_SOURCE.zip'
+      - '.github/workflows/build-oem-hud-bridge.yml'
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: hud-bridge-build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify and extract the source ZIP (isolated from existing repo files)
+        working-directory: .
+        run: |
+          set -euo pipefail
+          unzip -t 'Dolphin_OEM_HUD_Bridge_v0.9.6_SOURCE.zip' >/dev/null
+          mkdir -p hud-bridge-build
+          unzip -oq 'Dolphin_OEM_HUD_Bridge_v0.9.6_SOURCE.zip' -d hud-bridge-build
+          # Do not replace the source ZIP's CI config with a possibly stale repository file.
+          # A mismatch is reported immediately, instead of becoming a misleading preflight failure.
+          if ! cmp -s .github/workflows/build-oem-hud-bridge.yml hud-bridge-build/.github/workflows/build-oem-hud-bridge.yml; then
+            echo '::error::GitHub YML and SOURCE ZIP are from different versions. Upload BOTH v0.9.6 files to the same branch.'
+            exit 1
+          fi
+          test -s hud-bridge-build/tools/run_nav_receiver_typecheck.sh
+          test -s hud-bridge-build/app/build.gradle
+          test -s hud-bridge-build/tools/preflight.py
+          # Prevent an old ZIP / old source from silently producing a stale APK.
+          grep -Fq 'versionCode 16' hud-bridge-build/app/build.gradle
+          grep -Fq "versionName '0.9.6-ci-sync'" hud-bridge-build/app/build.gradle
+          grep -Fq '① 설치된 내비 앱 목록 열기' hud-bridge-build/app/src/main/java/com/dolphin/oemhud/MainActivity.java
+          grep -Fq 'NavAppPickerActivity' hud-bridge-build/app/src/main/AndroidManifest.xml
+          grep -Fq 'com.tmap.auto.byd' hud-bridge-build/app/src/main/java/com/dolphin/oemhud/NavPackageMatcher.java
+          grep -Fq 'getWindows()' hud-bridge-build/app/src/main/java/com/dolphin/oemhud/NavAccessibilityService.java
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install SDK
+        run: sdkmanager --install 'platforms;android-34' 'build-tools;34.0.0'
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+      - name: Check project and AndroidManifest preflight
+        run: python3 tools/preflight.py
+      - name: Run parser and HUD protocol tests
+        run: bash tools/run_jvm_tests.sh
+      - name: Exercise simulated Android broadcast-to-HUD flow
+        run: bash tools/run_service_simulation.sh
+      - name: Exercise BLE transport with simulated GATT
+        run: bash tools/run_ble_simulation.sh
+      - name: Exercise actual service plus actual BLE connector
+        run: bash tools/run_integrated_simulation.sh
+      - name: Type-check dashboard and app-picker Java against offline UI stubs
+        run: bash tools/run_dashboard_typecheck.sh
+      - name: Type-check TMAP accessibility and notification receivers
+        run: bash tools/run_nav_receiver_typecheck.sh
+      - name: Syntax-check ADB Kotlin source where standalone compiler is available
+        run: bash tools/run_adb_kotlin_syntax.sh
+      - name: Verify CI Java-resource packaging rules
+        run: python3 tools/check_packaging_ci_fix.py
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Validate compiled APK version and app picker component (fail if stale)
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
+          test -x "$AAPT"
+          "$AAPT" dump badging "$APK" | tee app/build/outputs/apk/debug/apk_badging.txt
+          grep -Fq "versionCode='16'" app/build/outputs/apk/debug/apk_badging.txt
+          grep -Fq "versionName='0.9.6-ci-sync'" app/build/outputs/apk/debug/apk_badging.txt
+          "$AAPT" dump xmltree "$APK" AndroidManifest.xml > app/build/outputs/apk/debug/apk_manifest_tree.txt
+          grep -Fq 'NavAppPickerActivity' app/build/outputs/apk/debug/apk_manifest_tree.txt
+          mv "$APK" app/build/outputs/apk/debug/DolphinOemHudBridge_v0.9.6_vc16.apk
+          sha256sum app/build/outputs/apk/debug/DolphinOemHudBridge_v0.9.6_vc16.apk > app/build/outputs/apk/debug/SHA256SUMS.txt
+          echo 'APK v0.9.6 / versionCode 16 / NavAppPickerActivity verified' | tee app/build/outputs/apk/debug/BUILD_VERIFIED.txt
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinOemHudBridge-v0.9.6-vc16-TMAP-INPUT-debug
+          path: |
+            hud-bridge-build/app/build/outputs/apk/debug/DolphinOemHudBridge_v0.9.6_vc16.apk
+            hud-bridge-build/app/build/outputs/apk/debug/SHA256SUMS.txt
+            hud-bridge-build/app/build/outputs/apk/debug/apk_badging.txt
+            hud-bridge-build/app/build/outputs/apk/debug/BUILD_VERIFIED.txt
+          if-no-files-found: error
