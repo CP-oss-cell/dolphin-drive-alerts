@@ -1,0 +1,126 @@
+name: Build Dolphin OEM HUD Bridge v0.10.3 (ZIP + YML)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['**']
+    paths:
+      - 'DolphinOemHudBridge_v0.10.3_Source.zip'
+      - '.github/workflows/build-oem-hud-bridge.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: hud-bridge-build
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify and extract v0.10.3 source ZIP
+        working-directory: .
+        run: |
+          set -euo pipefail
+          SOURCE='DolphinOemHudBridge_v0.10.3_Source.zip'
+          test -s "$SOURCE" || { echo "::error::Upload $SOURCE to the repository root on the SAME branch"; exit 1; }
+          unzip -t "$SOURCE" >/dev/null
+          mkdir -p hud-bridge-build
+          unzip -oq "$SOURCE" -d hud-bridge-build
+          test -s hud-bridge-build/RELEASE_BUNDLE.json
+          test -s hud-bridge-build/app/build.gradle
+          echo 'Source archive extracted. Release identity checked in next step; YAML byte equality is intentionally NOT required.'
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - name: Install SDK
+        run: sdkmanager --install 'platforms;android-34' 'build-tools;34.0.0'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.6'
+
+      - name: Verify source release identity (not YAML byte equality)
+        run: python3 tools/verify_release_bundle.py --version v0.10.3 --code 23
+
+      - name: Check Android manifest and source preflight
+        run: python3 tools/preflight.py
+
+      - name: Run parser and HUD protocol tests
+        run: bash tools/run_jvm_tests.sh
+
+      - name: Exercise simulated Android broadcast-to-HUD flow
+        run: bash tools/run_service_simulation.sh
+
+      - name: Exercise BLE transport with simulated GATT
+        run: bash tools/run_ble_simulation.sh
+
+      - name: Exercise actual service plus actual BLE connector
+        run: bash tools/run_integrated_simulation.sh
+
+      - name: Type-check dashboard and app picker against offline UI stubs
+        run: bash tools/run_dashboard_typecheck.sh
+
+      - name: Type-check TMAP accessibility and notification receivers
+        run: bash tools/run_nav_receiver_typecheck.sh
+
+      - name: Reject unsupported Android ProviderInfo fields
+        run: python3 tools/check_providerinfo_api.py
+
+      - name: Compile OEM manifest probe against REAL Android SDK 34
+        run: bash tools/run_android_sdk_providerinfo_check.sh
+
+      - name: Compile and exercise read-only OEM Binder boundary checks
+        run: bash tools/run_oem_binder_probe_typecheck.sh
+
+      - name: Validate HUD-RE-005 source evidence
+        run: python3 tools/validate_re005_evidence.py
+
+      - name: Validate final HUD-RE-012 research claims and unchanged real-car BLE
+        run: python3 tools/validate_re012_evidence.py
+
+      - name: Type-check auto brightness controller and verify hysteresis
+        run: bash tools/run_auto_brightness_typecheck.sh
+
+      # The real Gradle APK compile below is authoritative for the Kotlin ADB sources.
+      # Standalone kotlinc + offline Android stubs is optional and can hang on CI,
+      # so it must not block the actual :app:assembleDebug build.
+
+      - name: Verify Android Java resource packaging
+        run: python3 tools/check_packaging_ci_fix.py
+
+      - name: Build debug APK
+        run: gradle --no-daemon --stacktrace :app:assembleDebug
+
+      - name: Verify compiled APK version and app picker
+        run: |
+          set -euo pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          test -s "$APK"
+          cd app/build/outputs/apk/debug
+          AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
+          test -x "$AAPT"
+          "$AAPT" dump badging app-debug.apk | tee apk_badging.txt
+          grep -Fq "versionCode='23'" apk_badging.txt
+          grep -Fq "versionName='0.10.3-sdk-providerinfo-fix'" apk_badging.txt
+          "$AAPT" dump xmltree app-debug.apk AndroidManifest.xml > apk_manifest_tree.txt
+          grep -Fq 'NavAppPickerActivity' apk_manifest_tree.txt
+          mv app-debug.apk DolphinOemHudBridge_v0.10.3_vc23.apk
+          sha256sum DolphinOemHudBridge_v0.10.3_vc23.apk > SHA256SUMS.txt
+          echo 'CI VERIFIED: v0.10.3, versionCode=22, app picker present' > BUILD_VERIFIED.txt
+
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: DolphinOemHudBridge-v0.10.3-vc23-OEM-STATE-READONLY-debug
+          path: |
+            hud-bridge-build/app/build/outputs/apk/debug/DolphinOemHudBridge_v0.10.3_vc23.apk
+            hud-bridge-build/app/build/outputs/apk/debug/SHA256SUMS.txt
+            hud-bridge-build/app/build/outputs/apk/debug/apk_badging.txt
+            hud-bridge-build/app/build/outputs/apk/debug/BUILD_VERIFIED.txt
+          if-no-files-found: error
