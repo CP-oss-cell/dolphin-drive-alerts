@@ -1,0 +1,152 @@
+name: 믿음하나 브라우저 v2.0.0 Release APK
+run-name: 믿음하나 브라우저 v2.0.0 / Signed release
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'MideumHanaBrowser_v2.0.0_Source.zip'
+      - 'MideumHanaBrowser_v2.0.0_Complete_Build_Package.zip'
+      - '.github/workflows/MideumHanaBrowser_v2.0.0_Source.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: MideumHanaBrowser-v2.0.0-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  android-apk:
+    name: 믿음하나 브라우저 / Android APK 빌드
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Unpack MideumHanaBrowser source ZIP
+        shell: bash
+        run: |
+          python3 - <<'PYUNZIP'
+          import os
+          from pathlib import Path
+          from zipfile import ZipFile
+
+          root = Path(os.environ['GITHUB_WORKSPACE']).resolve()
+          target = root / '.mideumhana-browser-build'
+          target.mkdir(exist_ok=True)
+          source = root / 'MideumHanaBrowser_v2.0.0_Source.zip'
+          outer = root / 'MideumHanaBrowser_v2.0.0_Complete_Build_Package.zip'
+
+          def safe_extract(zf, destination):
+              for item in zf.infolist():
+                  name = item.filename.replace('\\', '/')
+                  p = Path(name)
+                  if p.is_absolute() or '..' in p.parts:
+                      raise RuntimeError('Unsafe source ZIP path: ' + name)
+                  dest = (destination / p).resolve()
+                  if not dest.is_relative_to(destination.resolve()):
+                      raise RuntimeError('Unsafe extraction destination: ' + name)
+                  if name.endswith('/'):
+                      dest.mkdir(parents=True, exist_ok=True)
+                  else:
+                      dest.parent.mkdir(parents=True, exist_ok=True)
+                      with zf.open(item) as inp, dest.open('wb') as out:
+                          import shutil
+                          shutil.copyfileobj(inp, out)
+
+          if source.is_file():
+              with ZipFile(source) as zf:
+                  safe_extract(zf, target)
+              print('EXTRACTED_SOURCE_ZIP:', source.name)
+          elif outer.is_file():
+              from io import BytesIO
+              with ZipFile(outer) as pkg:
+                  with ZipFile(BytesIO(pkg.read(source.name))) as zf:
+                      safe_extract(zf, target)
+              print('EXTRACTED_NESTED_SOURCE_ZIP:', outer.name)
+          elif (root / 'settings.gradle').is_file() and (root / 'app/build.gradle').is_file():
+              # Compatibility with GitHub repositories where the source is already unpacked.
+              import shutil
+              for f in ('settings.gradle', 'build.gradle', 'gradle.properties'):
+                  shutil.copy2(root / f, target / f)
+              for d in ('app', 'tests'):
+                  if (root / d).is_dir():
+                      shutil.copytree(root / d, target / d, dirs_exist_ok=True)
+              print('EXTRACTED_FROM_REPO_ROOT')
+          else:
+              raise RuntimeError('Source ZIP not found. Upload MideumHanaBrowser_v2.0.0_Source.zip at repository root, and put the YML under .github/workflows/.')
+
+          for f in ('settings.gradle', 'build.gradle', 'app/build.gradle', 'tests/verify_project.py'):
+              if not (target / f).is_file():
+                  raise RuntimeError('Missing required MideumHanaBrowser project file: ' + f)
+          if "rootProject.name = 'MideumHanaBrowser'" not in (target / 'settings.gradle').read_text():
+              raise RuntimeError('Wrong app project in archive: expected MideumHanaBrowser')
+          if "applicationId 'com.mideumhana.browser'" not in (target / 'app/build.gradle').read_text():
+              raise RuntimeError('Incorrect package ID: expected new MideumHana Browser v2 app')
+          print('MIDEUMHANA_PROJECT_READY:', target)
+          PYUNZIP
+
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Configure Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
+          log-accepted-android-sdk-licenses: 'false'
+
+      - name: Install Android 35 platform and build tools
+        run: sdkmanager --install 'platforms;android-35' 'build-tools;35.0.0'
+
+      - name: Configure Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Verify MideumHanaBrowser source
+        working-directory: .mideumhana-browser-build
+        shell: bash
+        run: |
+          python3 tests/verify_project.py
+          java tests/JavaSyntaxCheck.java $(find app/src/main/java -name '*.java')
+          python3 tests/offline_regression.py
+          python3 tests/bridgefree_regression.py
+          python3 tests/security_regression.py
+          python3 tests/ui_regression.py
+          python3 tests/r07_regression.py
+          python3 tests/fold_tabs_regression.py
+          python3 tests/rebrand_regression.py
+          python3 tests/v2_fresh_install_regression.py
+
+      - name: Build signed MideumHanaBrowser release APK
+        working-directory: .mideumhana-browser-build
+        shell: bash
+        env:
+          MHB_KEYSTORE_BASE64: ${{ secrets.MHB_KEYSTORE_BASE64 }}
+          MHB_SIGNING_PASSWORD: ${{ secrets.MHB_KEYSTORE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$MHB_KEYSTORE_BASE64" || -z "$MHB_SIGNING_PASSWORD" ]]; then
+            echo '::error::최초 빌드 전에 GitHub Actions Secrets MHB_KEYSTORE_BASE64, MHB_KEYSTORE_PASSWORD를 등록하세요. SIGNING_SETUP_KO.md 참고.'
+            exit 1
+          fi
+          export MHB_SIGNING_KEYSTORE_PATH="${RUNNER_TEMP}/mideumhana-release.jks"
+          printf '%s' "$MHB_KEYSTORE_BASE64" | base64 --decode > "$MHB_SIGNING_KEYSTORE_PATH"
+          chmod 600 "$MHB_SIGNING_KEYSTORE_PATH"
+          keytool -list -keystore "$MHB_SIGNING_KEYSTORE_PATH" -alias mideumhana \
+            -storepass "$MHB_SIGNING_PASSWORD" >/dev/null
+          gradle --no-daemon --stacktrace :app:assembleRelease
+          test -s app/build/outputs/apk/release/app-release.apk
+
+      - name: Upload 믿음하나 브라우저 v2.0.0 signed release APK
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: MideumHanaBrowser_v2.0.0_Release_APK
+          path: .mideumhana-browser-build/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
