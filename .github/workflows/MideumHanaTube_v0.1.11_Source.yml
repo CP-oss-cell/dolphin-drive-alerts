@@ -1,0 +1,122 @@
+name: MideumHanaTube Android APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout project
+        uses: actions/checkout@v4
+      - name: Install Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+      - name: Locate MideumHanaTube project
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_ZIP="MideumHanaTube_v0.1.11_Source.zip"
+          if [[ -f "$SOURCE_ZIP" ]]; then
+            mkdir -p mht-build-project
+            unzip -q -o "$SOURCE_ZIP" -d mht-build-project
+            PROJECT_DIR=mht-build-project
+          elif [[ -f app/build.gradle && -f settings.gradle && -f tools/test-filter.sh ]]; then
+            PROJECT_DIR=.
+          else
+            echo '::error::믿음하나튜브 소스가 없습니다. 새 저장소에 Source.zip을 루트에 올리거나 소스 ZIP 내부 파일 전체를 루트에 풀어 업로드하세요.'
+            exit 1
+          fi
+          grep -q 'app.mideumhanatube.android' "$PROJECT_DIR/app/build.gradle" || {
+            echo '::error::다른 Android 앱 프로젝트가 감지되었습니다. 믿음하나튜브 소스와 별도 저장소를 사용하세요.'
+            exit 1
+          }
+          grep -q 'MideumHanaTube' "$PROJECT_DIR/settings.gradle" || {
+            echo '::error::프로젝트 이름이 MideumHanaTube가 아닙니다.'
+            exit 1
+          }
+          echo "MHT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          echo "Building $PROJECT_DIR"
+      - name: Validate AndroidX and native media dependencies
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-gradle-config.sh"
+      - name: Install Android SDK platform 36
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDK_ROOT="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          SDKMANAGER="$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager"
+          if [[ ! -x "$SDKMANAGER" ]]; then
+            SDKMANAGER="$(command -v sdkmanager || true)"
+          fi
+          if [[ -z "$SDKMANAGER" || ! -x "$SDKMANAGER" ]]; then
+            echo '::error::sdkmanager를 찾을 수 없습니다.'
+            exit 1
+          fi
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          # Do not install the removed legacy 'tools' package.
+          yes | "$SDKMANAGER" --sdk_root="$SDK_ROOT" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --sdk_root="$SDK_ROOT" --install 'platforms;android-36' 'build-tools;36.0.0' 'platform-tools'
+          test -f "$SDK_ROOT/platforms/android-36/android.jar"
+      - name: Run filter regression tests
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-filter.sh"
+      - name: Validate background media implementation
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-background.sh"
+      - name: Check media-service Java initializers
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-service-java-initializers.sh"
+      - name: Test PiP video isolation and media controls
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-pip-media.sh"
+      - name: Test bookmark names and navigation
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-bookmarks-navigation.sh"
+      - name: Test native background audio URL policy and handoff wiring
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-native-audio.sh"
+      - name: Test exit controls and voice search permissions
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-controls-voice.sh"
+      - name: Test cancelable exit confirmation and media preservation
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-exit-confirmation.sh"
+      - name: Test YouTube mic bridge, back navigation and audio prefetch
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-v0111-regression.sh"
+      - name: Check Java, Android XML and CI YAML syntax
+        shell: bash
+        run: bash "$MHT_DIR/tools/test-source-syntax.sh"
+      - name: Build debug APK
+        shell: bash
+        run: |
+          cd "$MHT_DIR"
+          gradle --no-daemon --stacktrace :app:assembleDebug
+      - name: Stage APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          test -s "$MHT_DIR/app/build/outputs/apk/debug/app-debug.apk"
+          cp "$MHT_DIR/app/build/outputs/apk/debug/app-debug.apk" dist/MideumHanaTube_v0.1.11_Debug.apk
+      - name: Upload installable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: MideumHanaTube_v0.1.11_Debug_APK
+          path: dist/MideumHanaTube_v0.1.11_Debug.apk
+          if-no-files-found: error
+          retention-days: 30
