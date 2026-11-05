@@ -38,9 +38,35 @@ jobs:
           else
             echo '::error::Missing MideumHanaTube source ZIP or unpacked project.'; exit 1
           fi
-          grep -q "applicationId 'app.mideumhanatube.android'" "$PROJECT_DIR/app/build.gradle" || exit 1
-          grep -q "versionCode 19" "$PROJECT_DIR/app/build.gradle" || exit 1
-          grep -q "versionName '0.1.17'" "$PROJECT_DIR/app/build.gradle" || exit 1
+          # Read the version from the source archive name, then compare to Gradle.
+          # This prevents accidentally keeping the previous version in this workflow.
+          python3 - "$PROJECT_DIR/app/build.gradle" "$SRC" <<'PY_VERSION'
+          import os, pathlib, re, sys
+          gradle_file, archive = sys.argv[1:]
+          match = re.fullmatch(r'MideumHanaTube_v(\d+\.\d+\.\d+)_Source\.zip', pathlib.Path(archive).name)
+          if not match:
+              sys.exit('::error::Source archive must use MideumHanaTube_vX.Y.Z_Source.zip')
+          expected_version = match.group(1)
+          src = pathlib.Path(gradle_file).read_text(encoding='utf-8')
+          def extract(pattern, label):
+              found = re.findall(pattern, src)
+              if len(found) != 1:
+                  sys.exit(f'::error::Expected exactly one {label} in app/build.gradle')
+              return found[0]
+          package_id = extract(r"\bapplicationId\s+['\"]([^'\"]+)['\"]", 'applicationId')
+          actual_version = extract(r"\bversionName\s+['\"]([^'\"]+)['\"]", 'versionName')
+          version_code = int(extract(r"\bversionCode\s+(\d+)", 'versionCode'))
+          if package_id != 'app.mideumhanatube.android':
+              sys.exit(f'::error::Wrong package ID: {package_id}')
+          if actual_version != expected_version:
+              sys.exit(f'::error::Version mismatch: source archive v{expected_version} but app/build.gradle v{actual_version}')
+          if version_code <= 0:
+              sys.exit('::error::Invalid versionCode')
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              output.write(f'MHT_VERSION_NAME={actual_version}\n')
+              output.write(f'MHT_VERSION_CODE={version_code}\n')
+          print(f'Verified {package_id} v{actual_version} (versionCode {version_code})')
+          PY_VERSION
           echo "MHT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
       - name: Install Android 36 SDK
         shell: bash
@@ -81,7 +107,7 @@ jobs:
           "$TOOL" verify --print-certs "$APK" | grep -i 'certificate SHA-256 digest:'
           BADGING="$("$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$APK" | head -1)"
           echo "$BADGING"
-          [[ "$BADGING" == *"app.mideumhanatube.android"* && "$BADGING" == *"versionCode='19'"* ]] || {
+          [[ "$BADGING" == *"app.mideumhanatube.android"* && "$BADGING" == *"versionCode='$MHT_VERSION_CODE'"* && "$BADGING" == *"versionName='$MHT_VERSION_NAME'"* ]] || {
             echo '::error::Package ID or versionCode mismatch'; exit 1;
           }
           mkdir -p dist
