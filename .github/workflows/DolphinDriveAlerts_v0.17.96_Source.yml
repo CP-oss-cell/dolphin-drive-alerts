@@ -1,4 +1,4 @@
-name: Build Dolphin Drive Alerts v0.17.91 (Cockpit UI + Media Ducking + Priority + Per-Alert Voice + FG Verify + BYD Scanner)
+name: Build Dolphin Drive Alerts v0.17.96 (Cockpit UI + Media Ducking + Priority + Per-Alert Voice + FG Verify + BYD Scanner)
 
 on:
   workflow_dispatch:
@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 env:
-  SOURCE_ZIP: DolphinDriveAlerts_v0.17.91_Source.zip
+  SOURCE_ZIP: DolphinDriveAlerts_v0.17.96_Source.zip
 
 jobs:
   build-apk:
@@ -36,7 +36,7 @@ jobs:
           unzip -tq "$SOURCE_ZIP" | tail -n 2
           sha256sum "$SOURCE_ZIP"
 
-      - name: Extract v0.17.91 source
+      - name: Extract v0.17.96 source
         shell: bash
         run: |
           set -euo pipefail
@@ -299,8 +299,8 @@ jobs:
           echo "$BADGING" | grep -F "versionName='$EXPECTED_NAME'" >/dev/null || { echo "::error::APK and Gradle versionName differ"; exit 1; }
           echo "APK_VERSION_MATCH: $EXPECTED_NAME (code $EXPECTED_CODE)" >> "$GITHUB_STEP_SUMMARY"
           printf '%s\n' "$SIGNING_CERT_SHA256" > "$GITHUB_WORKSPACE/dist/BUILT_APK_CERT_SHA256.txt"
-          cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.91-SIGNED.apk"
-          sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.91-SIGNED.apk" > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.91-SIGNED.apk.sha256"
+          cp "$APK" "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.96-SIGNED.apk"
+          sha256sum "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.96-SIGNED.apk" > "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.96-SIGNED.apk.sha256"
           cp "$PROJECT_ROOT/R028_IGNITION_AUDIT_AND_CAPTURE_RELIABILITY_KO.md" "$GITHUB_WORKSPACE/dist/"
           cp "$PROJECT_ROOT/INTEGRATION_V0173_EQ_SOUND_FOCUS_KO.md" "$GITHUB_WORKSPACE/dist/"
           cp "$PROJECT_ROOT/INTEGRATION_V0175_CAPTURE_RECONNECT_KO.md" "$GITHUB_WORKSPACE/dist/"
@@ -391,12 +391,12 @@ jobs:
           echo '--- dist ---'
           ls -lah "$GITHUB_WORKSPACE/dist"
           echo '--- APK SHA256 ---'
-          cat "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.91-SIGNED.apk.sha256"
+          cat "$GITHUB_WORKSPACE/dist/DolphinDriveAlerts_v0.17.96-SIGNED.apk.sha256"
 
       - name: Upload installable APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DolphinDriveAlerts_v0.17.91-SIGNED
+          name: DolphinDriveAlerts_v0.17.96-SIGNED
           path: dist/*
           if-no-files-found: error
           retention-days: 30

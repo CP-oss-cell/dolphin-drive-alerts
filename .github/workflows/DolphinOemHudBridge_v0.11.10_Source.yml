@@ -1,11 +1,11 @@
-name: Build Dolphin OEM HUD Bridge v0.11.9 (ZIP + YML)
+name: Build Dolphin OEM HUD Bridge v0.11.10 (ZIP + YML)
 
 on:
   workflow_dispatch:
   push:
     branches: ['**']
     paths:
-      - 'DolphinOemHudBridge_v0.11.9_Source.zip'
+      - 'DolphinOemHudBridge_v0.11.10_Source.zip'
       - '.github/workflows/build-oem-hud-bridge.yml'
 
 jobs:
@@ -17,11 +17,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Verify and extract v0.11.9 source ZIP
+      - name: Verify and extract v0.11.10 source ZIP
         working-directory: .
         run: |
           set -euo pipefail
-          SOURCE='DolphinOemHudBridge_v0.11.9_Source.zip'
+          SOURCE='DolphinOemHudBridge_v0.11.10_Source.zip'
           test -s "$SOURCE" || { echo "::error::Upload $SOURCE to the repository root on the SAME branch"; exit 1; }
           unzip -t "$SOURCE" >/dev/null
           mkdir -p hud-bridge-build
@@ -46,7 +46,7 @@ jobs:
           gradle-version: '8.6'
 
       - name: Verify source release identity (not YAML byte equality)
-        run: python3 tools/verify_release_bundle.py --version v0.11.9 --code 41
+        run: python3 tools/verify_release_bundle.py --version v0.11.10 --code 42
 
       - name: Check Android manifest and source preflight
         run: python3 tools/preflight.py
@@ -109,20 +109,20 @@ jobs:
           AAPT="$ANDROID_HOME/build-tools/34.0.0/aapt"
           test -x "$AAPT"
           "$AAPT" dump badging app-debug.apk | tee apk_badging.txt
-          grep -Fq "versionCode='41'" apk_badging.txt
-          grep -Fq "versionName='0.11.9-oem-broadcast-probe'" apk_badging.txt
+          grep -Fq "versionCode='42'" apk_badging.txt
+          grep -Fq "versionName='0.11.10-ble-arrow-speed-fix'" apk_badging.txt
           "$AAPT" dump xmltree app-debug.apk AndroidManifest.xml > apk_manifest_tree.txt
           grep -Fq 'NavAppPickerActivity' apk_manifest_tree.txt
-          mv app-debug.apk DolphinOemHudBridge_v0.11.9_vc41.apk
-          sha256sum DolphinOemHudBridge_v0.11.9_vc41.apk > SHA256SUMS.txt
-          echo 'CI VERIFIED: v0.11.9, versionCode=41, app picker present' > BUILD_VERIFIED.txt
+          mv app-debug.apk DolphinOemHudBridge_v0.11.10_vc42.apk
+          sha256sum DolphinOemHudBridge_v0.11.10_vc42.apk > SHA256SUMS.txt
+          echo 'CI VERIFIED: v0.11.10, versionCode=42, app picker present' > BUILD_VERIFIED.txt
 
       - name: Upload installable APK
         uses: actions/upload-artifact@v4
         with:
-          name: DolphinOemHudBridge-v0.11.9-vc41-OEM-STATE-READONLY-debug
+          name: DolphinOemHudBridge-v0.11.10-vc42-OEM-STATE-READONLY-debug
           path: |
-            hud-bridge-build/app/build/outputs/apk/debug/DolphinOemHudBridge_v0.11.9_vc41.apk
+            hud-bridge-build/app/build/outputs/apk/debug/DolphinOemHudBridge_v0.11.10_vc42.apk
             hud-bridge-build/app/build/outputs/apk/debug/SHA256SUMS.txt
             hud-bridge-build/app/build/outputs/apk/debug/apk_badging.txt
             hud-bridge-build/app/build/outputs/apk/debug/BUILD_VERIFIED.txt
